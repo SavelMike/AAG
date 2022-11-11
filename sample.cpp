@@ -44,6 +44,45 @@ void print_nfa(const NFA& a);
 
 #endif
 
+// Find and return the biggest value of NFA states
+//
+State find_delta_state(const NFA& a) {
+    State max_state = 0;
+    for (auto i : a.m_States) {
+        if (i > max_state) {
+            max_state = i;
+        }
+    }
+
+    return max_state + 1;
+}
+
+// Modify all states of NFA a by adding delta
+void increase_states_by_delta(NFA& a, State delta) {
+    // Modify set of states
+    std::set<State> states;
+    for (auto i : a.m_States) {
+        states.insert(i + delta);
+    }
+    a.m_States = states;
+
+    // Modify set of final states
+    states.clear();
+    for (auto i : a.m_FinalStates) {
+        states.insert(i + delta);
+    }
+    a.m_FinalStates = states;
+
+    // Modify initial state
+    a.m_InitialState += delta;
+
+    std::map<std::pair<State, Symbol>, State> transitions;
+    for (auto j = a.m_Transitions.begin(); j != a.m_Transitions.end(); ++j) {
+        State s = j->second;
+        State s1 = j->first.first;
+        std::cout << "key [" << j->first.first << ", " << j->first.second << "]" << j->second << "\n";
+    }
+}
 
 // Unify two NFAs with epsilon transition
 // Input:
@@ -63,6 +102,10 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
     print_nfa(b);
     std::cout << "Alphabet of unified NFA:\n";
     print_nfa(res);
+    
+    NFA b1 = b;
+    increase_states_by_delta(b1, find_delta_state(a));
+    print_nfa(b1);
 
     return res;
 }
@@ -89,7 +132,15 @@ bool operator==(const DFA& a, const DFA& b)
 }
 
 void print_nfa(const NFA& a) {
+    std::cout << "Alphabet:\n";
     for (auto i : a.m_Alphabet) {
+        std::cout << i;
+    }
+
+    std::cout << "\n";
+
+    std::cout << "States:\n";
+    for (auto i : a.m_States) {
         std::cout << i;
     }
 
@@ -110,7 +161,7 @@ int main()
         {2},
     };
     NFA a2{
-        {0, 1, 2},
+        {0, 1, 2}, // 3,4,5
         {'a', 'b'},
         {
             {{0, 'a'}, {1}},
