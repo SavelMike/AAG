@@ -40,7 +40,7 @@ struct DFA {
     std::set<State> m_FinalStates;
 };
 
-void print_nfa(const NFA& a);
+void print_nfa(std::string text, const NFA& a);
 
 #endif
 
@@ -76,12 +76,19 @@ void increase_states_by_delta(NFA& a, State delta) {
     // Modify initial state
     a.m_InitialState += delta;
 
-    std::map<std::pair<State, Symbol>, State> transitions;
-    for (auto j = a.m_Transitions.begin(); j != a.m_Transitions.end(); ++j) {
-        State s = j->second;
-        State s1 = j->first.first;
-        std::cout << "key [" << j->first.first << ", " << j->first.second << "]" << j->second << "\n";
+    // Modify transition function
+    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
+    for (auto j : a.m_Transitions) {
+        std::pair<State, Symbol> key = j.first;
+        key.first += delta;
+        std::set<State> value;
+        for (auto k : j.second) {
+            value.insert(k + delta);
+        }
+        transitions.insert({ key, value });
     }
+
+    a.m_Transitions = transitions;
 }
 
 // Unify two NFAs with epsilon transition
@@ -97,15 +104,13 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
         res.m_Alphabet.insert(i);
     }
 
-    std::cout << "Alphabet of input NFAs:\n";
-    print_nfa(a);
-    print_nfa(b);
-    std::cout << "Alphabet of unified NFA:\n";
-    print_nfa(res);
+    print_nfa("Input NFA a", a);
+    print_nfa("Input NFA b", b);
+    print_nfa("NFA with united alphabets", res);
     
     NFA b1 = b;
     increase_states_by_delta(b1, find_delta_state(a));
-    print_nfa(b1);
+    print_nfa("Modified input NFA b", b1);
 
     return res;
 }
@@ -131,20 +136,36 @@ bool operator==(const DFA& a, const DFA& b)
     return std::tie(a.m_States, a.m_Alphabet, a.m_Transitions, a.m_InitialState, a.m_FinalStates) == std::tie(b.m_States, b.m_Alphabet, b.m_Transitions, b.m_InitialState, b.m_FinalStates);
 }
 
-void print_nfa(const NFA& a) {
-    std::cout << "Alphabet:\n";
+void print_nfa(std::string text, const NFA& a) {
+    std::cout << text << "\n";
+    std::cout << "\tAlphabet [";
     for (auto i : a.m_Alphabet) {
-        std::cout << i;
+        std::cout << " '" << i << "'";
     }
+    std::cout << " ]\n";
 
-    std::cout << "\n";
-
-    std::cout << "States:\n";
+    std::cout << "\tStates [";
     for (auto i : a.m_States) {
-        std::cout << i;
+        std::cout << " " << i;
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tTransitions : \n";
+    for (auto j : a.m_Transitions) {
+        std::cout << "\t\tkey [ " << j.first.first << ", '" << j.first.second << "' ], value [";
+        for (auto k : j.second) {
+            std::cout << " " << k;
+        }
+        std::cout << " ]\n";
     }
 
-    std::cout << "\n";
+    std::cout << "\tFinal States [";
+    for (auto i : a.m_FinalStates) {
+        std::cout << " " << i;
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
 }
 
 int main()
@@ -243,6 +264,7 @@ int main()
     };
 //    assert(unify(b1, b2) == b);
     unify(b1, b2);
+    return 0;
 
     NFA c1{
         {0, 1, 2, 3, 4},
