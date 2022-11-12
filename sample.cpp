@@ -103,15 +103,45 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
     for (auto i : b.m_Alphabet) {
         res.m_Alphabet.insert(i);
     }
-
-    print_nfa("Input NFA a", a);
-    print_nfa("Input NFA b", b);
-    print_nfa("NFA with united alphabets", res);
     
+    // This is to gurantee NFAs don't have common states
     NFA b1 = b;
     increase_states_by_delta(b1, find_delta_state(a));
-    print_nfa("Modified input NFA b", b1);
+    // 1. Q <- Q1 U Q2 U {q0}
+    res.m_States = a.m_States;
+    for (auto i : b1.m_States) {
+        res.m_States.insert(i);
+    }
+    res.m_InitialState = find_delta_state(b1);
+    res.m_States.insert(res.m_InitialState);
 
+    // Compose transition function of NFA res
+    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
+    
+    // 3. delta(q, a) <- delta1(q, a)
+    transitions = a.m_Transitions;
+    
+    // 4. delta(q, a) <- delta2(q, a)
+    for (auto i : b1.m_Transitions) {
+        transitions.insert(i);
+    }
+
+    // 2.   delta(q0, epsilon) <- {q01, q02}
+    std::pair<State, Symbol> key = {res.m_InitialState, '\0'};
+    std::set<State> value = { a.m_InitialState, b1.m_InitialState };
+    transitions.insert({ key, value });
+    res.m_Transitions = transitions;
+
+    // 5. F <- F1 U F2
+    res.m_FinalStates = a.m_FinalStates;
+    for (auto i : b1.m_FinalStates) {
+        res.m_FinalStates.insert(i);
+    }
+    
+    print_nfa("NFA a", a);
+    print_nfa("NFA b", b1);
+    print_nfa("Unified NFA", res);
+    
     return res;
 }
 
