@@ -145,10 +145,45 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
     return res;
 }
 
+std::set<State> e_closure(const NFA& a, State s) {
+    std::set<State> res = { s };
+    int cnt = 1;
+    while (1) {
+        for (auto i : res) {
+            std::pair<State, Symbol> key = { i, '\0' };
+            auto pos = a.m_Transitions.find(key);
+            if (pos == a.m_Transitions.end()) {
+                // Epsilon transition for this state not found
+                continue;
+            }
+            for (auto j : pos->second) {
+                res.insert(j);
+            }
+        }
+        if (res.size() == cnt) {
+            break;
+        }
+
+        cnt = res.size();
+    }
+
+    std::cout << "Epsilon closure for state " << s << "\n";
+    for (auto k : res) {
+        std::cout << k << " ";
+    }
+    std::cout << "\n";
+    
+    return res;
+}
+
 DFA unify(const NFA& a, const NFA& b) {
-    // Calculate union NFA
+    // Calculate union NFA with Epsilon closure
     NFA res = unify_nfa(a, b);
     DFA dfa;
+    for (auto i : res.m_States) {
+        e_closure(res, i);
+    }
+    
     return dfa;
 }
 
