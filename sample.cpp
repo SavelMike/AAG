@@ -45,7 +45,6 @@ void print_nfa(std::string text, const NFA& a);
 #endif
 
 // Find and return the biggest value of NFA states
-//
 State find_delta_state(const NFA& a) {
     State max_state = 0;
     for (auto i : a.m_States) {
@@ -145,6 +144,7 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
     return res;
 }
 
+// Calculates epsilon closure for a state \s of NFA \a by definition lecture 3 p. 25
 std::set<State> e_closure(const NFA& a, State s) {
     std::set<State> res = { s };
     int cnt = 1;
@@ -156,6 +156,7 @@ std::set<State> e_closure(const NFA& a, State s) {
                 // Epsilon transition for this state not found
                 continue;
             }
+            // pos->second is set of states
             for (auto j : pos->second) {
                 res.insert(j);
             }
@@ -173,6 +174,64 @@ std::set<State> e_closure(const NFA& a, State s) {
     }
     std::cout << "\n";
     
+    return res;
+}
+
+bool is_set_intersect_empty(const std::set<State>& a, const std::set<State>& b) {
+    for (auto i : a) {
+        for (auto j : b) {
+            if (i == j) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+// Conversion NFA with epsilon transitions into NFA without epsilon transitions
+NFA e_transition_removal(const NFA& a) {
+    NFA res;
+    
+    res.m_States = a.m_States;
+    res.m_Alphabet = a.m_Alphabet;
+    res.m_InitialState = a.m_InitialState;
+    
+    // Compose delta'(transition function on NFA res)
+    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
+    for (auto state : res.m_States) {
+        std::set<State> e_clos = e_closure(a, state);
+        for (auto symbol : res.m_Alphabet) {
+            std::pair<State, Symbol> key = { state, symbol };
+            std::set<State> value;
+            for (auto clos_state : e_clos) {
+                std::pair<State, Symbol> clos_key = { clos_state, symbol };
+                auto pos = a.m_Transitions.find(clos_key);
+                if (pos == a.m_Transitions.end()) {
+                    // Not found
+                    continue;
+                }
+                // pos->second is set of states
+                for (auto j : pos->second) {
+                    value.insert(j);
+                }
+            }
+            transitions.insert({ key, value });
+        }
+    }
+    res.m_Transitions = transitions;
+
+    // Compose F'(final states of NFA res)
+    std::set<State> fin_states;
+    for (auto q : res.m_States) {
+        std::set<State> e_clos = e_closure(a, q);
+        if (!is_set_intersect_empty(e_clos, a.m_FinalStates)) {
+            fin_states.insert(q);
+        }
+    }
+
+    res.m_FinalStates = fin_states;
+
     return res;
 }
 
@@ -231,10 +290,31 @@ void print_nfa(std::string text, const NFA& a) {
     std::cout << " ]\n";
 
     std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
+
 }
 
 int main()
 {
+    // Automat from lecture 3, p. 23
+    NFA test{
+        {0, 1, 2},
+        {'a', 'b', 'c'},
+        {
+            {{0, 'a'}, {0}},
+            {{0, '\0'}, {1}},
+            {{1, 'b'}, {1}},
+            {{1, '\0'}, {2}},
+            {{2, 'c'}, {2}},
+        },
+        0,
+        {2},
+    };
+
+    print_nfa("Orig\n", test);
+    print_nfa("Epsilon transition removal\n", e_transition_removal(test));
+    
+    return 0;
+
     NFA a1{
         {0, 1, 2},
         {'a', 'b'},
