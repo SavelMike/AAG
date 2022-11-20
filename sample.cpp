@@ -251,6 +251,66 @@ DFA intersect(const NFA& a, const NFA& b) {
     return dfa;
 }
 
+typedef std::set<State> Combined_state;
+
+std::map<Combined_state, State> combined_states;
+State dfa_state = 1;
+// Return value:
+//      true  if combined_state is added
+//      false otherwise
+bool store_combined_state(Combined_state state) {
+    // Check  that \a states is in combined_states
+    auto pos = combined_states.find(state);
+    if (pos != combined_states.end()) {
+        return false;
+    }
+    combined_states.insert({ state, dfa_state });
+    dfa_state++;
+
+    return true;
+}
+
+// NFA to DFA conversion using subset construction
+// Input:
+//      NFA    
+//  Output:
+//      DFA
+//  Lecture 3, p. 3 (NFA determinization)
+DFA nfa_determinization(const NFA& a) {
+    std::set<Combined_state> Q;
+    std::map<std::pair<Combined_state, Symbol>, Combined_state> transitions;
+    std::set<Combined_state> tmp;
+    tmp.insert({ a.m_InitialState });
+    while (1) {
+        if (tmp.empty()) {
+            break;
+        }
+        std::set<Combined_state> tmp2;
+        for (auto comb_state : tmp) {
+            for (auto symbol : a.m_Alphabet) {
+                Combined_state uni;
+                for (auto state : comb_state) {
+                    auto pos = a.m_Transitions.find({ state, symbol });
+                    if (pos != a.m_Transitions.end()) {
+                        // Add all states from pos.second
+                        for (auto s : pos->second) {
+                            uni.insert(s);
+                        }
+
+                    }
+                }
+                // Try to save new combined state
+                if (store_combined_state(uni)) {
+                    tmp2.insert(uni);
+                }
+                transitions.insert({{ comb_state, symbol }, uni});
+            }
+            Q.insert(comb_state);
+        }
+        tmp = tmp2;
+    }        
+}
+
 
 #ifndef __PROGTEST__
 
