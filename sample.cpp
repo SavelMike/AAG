@@ -270,6 +270,14 @@ bool store_combined_state(Combined_state state) {
     return true;
 }
 
+void print_comb_state(Combined_state state) {
+    std::cout << "{ ";
+    for (auto j : state) {
+        std::cout << j << ", ";
+    }
+    std::cout << "}";
+}
+
 // NFA to DFA conversion using subset construction
 // Input:
 //      NFA    
@@ -277,6 +285,7 @@ bool store_combined_state(Combined_state state) {
 //      DFA
 //  Lecture 3, p. 3 (NFA determinization)
 DFA nfa_determinization(const NFA& a) {
+    DFA res;
     std::set<Combined_state> Q;
     std::map<std::pair<Combined_state, Symbol>, Combined_state> transitions;
     std::set<Combined_state> tmp;
@@ -307,8 +316,33 @@ DFA nfa_determinization(const NFA& a) {
             }
             Q.insert(comb_state);
         }
+
         tmp = tmp2;
-    }        
+        // Print transitions
+        std::cout << "{\n";
+        for (auto i : transitions) {
+            auto value = i.second;
+            auto cs = i.first.first;
+            auto sym = i.first.second;
+            std::cout << "{ ";
+            print_comb_state(cs);
+            std::cout << ", " << sym << "} -> ";
+            print_comb_state(value);
+            std::cout << "\n";
+        }
+        std::cout << "}\n";
+        
+        // Print states of DFA
+        std::cout << "{\n";
+        for (auto i : Q) {
+            std::cout << "  ";
+            print_comb_state(i);
+            std::cout << "\n";
+        }
+        std::cout << "}\n";
+    }
+
+    return res;
 }
 
 
@@ -355,8 +389,26 @@ void print_nfa(std::string text, const NFA& a) {
 
 int main()
 {
+    // Automat from lecture 3, p. 4
+    NFA test1 {
+        {1, 2, 3, 4}, // q, q0, q1, qf
+        {'0', '1'},
+        {
+            {{1, '0'}, {1, 2}},
+            {{1, '1'}, {1, 3}},
+            {{2, '0'}, {2, 4}},
+            {{2, '1'}, {2}},
+            {{3, '0'}, {3}},
+            {{3, '1'}, {3, 4}},
+        },
+        1,
+        {4},
+    };
+    nfa_determinization(test1);
+    return 0;
+
     // Automat from lecture 3, p. 23
-    NFA test{
+    NFA test {
         {0, 1, 2},
         {'a', 'b', 'c'},
         {
