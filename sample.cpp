@@ -290,6 +290,7 @@ DFA nfa_determinization(const NFA& a) {
     std::map<std::pair<Combined_state, Symbol>, Combined_state> transitions;
     std::set<Combined_state> tmp;
     tmp.insert({ a.m_InitialState });
+    // Determine set of states and transition function of DFA
     while (1) {
         if (tmp.empty()) {
             break;
@@ -340,6 +341,24 @@ DFA nfa_determinization(const NFA& a) {
             std::cout << "\n";
         }
         std::cout << "}\n";
+    }
+    
+    // Determine set of final states
+    std::set<Combined_state> F;
+    for (auto comb_state : Q) {
+        for (auto state : comb_state) {
+            auto pos = a.m_FinalStates.find(state);
+            if (pos != a.m_FinalStates.end()) {
+                F.insert(comb_state);
+                break;
+            }
+        }
+    }
+
+    std::cout << "Final states:\n";
+    for (auto i : F) {
+        print_comb_state(i);
+        std::cout << "\n";
     }
 
     return res;
