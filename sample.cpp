@@ -41,6 +41,7 @@ struct DFA {
 };
 
 void print_nfa(std::string text, const NFA& a);
+void print_dfa(std::string text, const DFA& a);
 
 #endif
 
@@ -253,6 +254,8 @@ DFA intersect(const NFA& a, const NFA& b) {
 
 typedef std::set<State> Combined_state;
 
+// Combined states needs to be mapped into states.
+// This map is filled during determinization of combined states of DFA.
 std::map<Combined_state, State> combined_states;
 State dfa_state = 1;
 // Return value:
@@ -290,6 +293,7 @@ DFA nfa_determinization(const NFA& a) {
     std::map<std::pair<Combined_state, Symbol>, Combined_state> transitions;
     std::set<Combined_state> tmp;
     tmp.insert({ a.m_InitialState });
+    store_combined_state({ a.m_InitialState });
     // Determine set of states and transition function of DFA
     while (1) {
         if (tmp.empty()) {
@@ -355,12 +359,62 @@ DFA nfa_determinization(const NFA& a) {
         }
     }
 
-    std::cout << "Final states:\n";
+    // Build DFA
+    // res.m_States
+    for (auto comb_state : Q) {
+        auto pos = combined_states.find(comb_state);
+        if (pos == combined_states.end()) {
+            std::cerr << "Combined state not found";
+            exit(1);
+        }
+        res.m_States.insert(pos->second);
+    }
+
+    // res.m_Alphabet
+    res.m_Alphabet = a.m_Alphabet;
+
+    // res.m_InitialState
+    auto pos = combined_states.find({ a.m_InitialState });
+    if (pos == combined_states.end()) {
+        std::cerr << "Initial combined state not found";
+        exit(1);
+    }
+    res.m_InitialState = pos->second;
+
+    // res.m_FinalStates
+    for (auto comb_state : F) {
+        auto pos = combined_states.find(comb_state);
+        if (pos == combined_states.end()) {
+            std::cerr << "Combined state not found";
+            exit(1);
+        }
+        res.m_FinalStates.insert(pos->second);
+    }
+
+    // res.m_Transition
+    for (auto i : transitions) {
+        auto key = i.first;
+        auto value = i.second;
+        //  TODO: pos must be found!
+        auto pos = combined_states.find(key.first);
+        auto pos2 = combined_states.find(value);
+        res.m_Transitions.insert({{ pos->second, key.second }, pos2->second });
+    }
+/*    std::cout << "Final states:\n";
     for (auto i : F) {
         print_comb_state(i);
         std::cout << "\n";
     }
 
+    std::cout << "Mapping from combined states to states\n";
+    for (auto j : combined_states) {
+        print_comb_state(j.first);
+        std::cout << " -> " << j.second << "\n";
+    }
+*/
+    print_nfa("Print ", a);
+    print_dfa("Print ", res);
+    
     return res;
 }
 
@@ -374,7 +428,7 @@ bool operator==(const DFA& a, const DFA& b)
 }
 
 void print_nfa(std::string text, const NFA& a) {
-    std::cout << text << "\n";
+    std::cout << "NFA: " << text << "\n";
     std::cout << "\tAlphabet [";
     for (auto i : a.m_Alphabet) {
         std::cout << " '" << i << "'";
@@ -403,7 +457,35 @@ void print_nfa(std::string text, const NFA& a) {
     std::cout << " ]\n";
 
     std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
+}
 
+void print_dfa(std::string text, const DFA& a) {
+    std::cout << "DFA: " << text << "\n";
+    std::cout << "\tAlphabet [";
+    for (auto i : a.m_Alphabet) {
+        std::cout << " '" << i << "'";
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tStates [";
+    for (auto i : a.m_States) {
+        std::cout << " " << i;
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tTransitions : \n";
+    for (auto j : a.m_Transitions) {
+        std::cout << "\t\tkey [ " << j.first.first << ", '" << j.first.second <<
+            "' ], value [ " << j.second << " ]\n";
+    }
+
+    std::cout << "\tFinal States [";
+    for (auto i : a.m_FinalStates) {
+        std::cout << " " << i;
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
 }
 
 int main()
