@@ -8,6 +8,7 @@
 #include <deque>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <list>
 #include <map>
 #include <memory>
@@ -253,6 +254,7 @@ DFA intersect(const NFA& a, const NFA& b) {
 }
 
 typedef std::set<State> Combined_state;
+typedef std::set<Combined_state> Partition;
 
 // Combined states needs to be mapped into states.
 // This map is filled during determinization of combined states of DFA.
@@ -417,6 +419,89 @@ DFA nfa_determinization(const NFA& a) {
     
     return res;
 }
+ 
+void print_partition(const Partition &partition) {
+    std::cout << "Print partition\n";
+    std::cout << "{\n";
+    for (auto i : partition) {
+        std::cout << "  ";
+        print_comb_state(i);
+        std::cout << "\n";
+    }
+    std::cout << "}\n";
+ }
+
+Partition new_partition(const Partition &P, const DFA &dfa) {
+    Partition T;
+    
+    for (auto S : P) {
+        for (auto a : dfa.m_Alphabet) {
+            // Partition S by a
+            std::set<State> S1;
+            std::set<State> S2;
+            std::set<State> S1Target;
+            for (auto s : S) {
+                auto m = dfa.m_Transitions.find({ s, a });
+                if (m == dfa.m_Transitions.end()) {
+                    std::cout << "{ " << s << ", " << a << " } -> empty\n";
+                    continue;
+                }
+                // Look for set which contains m->second
+                for (auto tmp : P) {
+                    auto rc = tmp.find(m->second);
+                    if (rc == tmp.end()) {
+                        continue;
+                    }
+                    if (S1.empty()) {
+                        S1Target = tmp;
+                        S1.insert(m->second);
+                    }
+                    else {
+                        if (tmp == S1Target) {
+                            S1.insert(m->second);
+                        }
+                        else {
+                            S2.insert(m->second);
+                        }
+                    }
+                }
+            }
+            T.insert(S1);
+            if (!S2.empty()) {
+                T.insert(S2);
+            }
+        }
+    }
+    return T;
+}
+
+// DFA minimization using partinioning method
+// Lecture 3. p. 31
+DFA dfa_minimization(const DFA& a) {
+    DFA res;
+    Partition partition;
+    Partition partition2;
+
+    // Initial partition
+    //  { a.FinalStates, a.States \ a.FinalStates }
+    partition.insert(a.m_FinalStates);
+    Combined_state nonfinal_states;
+    std::set_difference(a.m_States.begin(), a.m_States.end(), 
+        a.m_FinalStates.begin(), a.m_FinalStates.end(), 
+        std::inserter(nonfinal_states, nonfinal_states.end()));
+    partition.insert(nonfinal_states);
+    
+    while (1) {
+        print_partition(partition);
+        partition2 = new_partition(partition, a);
+        if (partition == partition2) {
+            break;
+        }
+        partition = partition2;
+    }
+   
+    return res;
+}
 
 
 #ifndef __PROGTEST__
@@ -505,7 +590,34 @@ int main()
         1,
         {4},
     };
-    nfa_determinization(test1);
+//    DFA dfa = nfa_determinization(test1);
+    DFA test2{
+        {0, 1, 2, 3, 4, 5, 6, 7},
+        {'a', 'b'},
+        {
+            {{0, 'a'}, 1},
+            {{0, 'b'}, 4},
+            {{1, 'a'}, 5},
+            {{1, 'b'}, 2},
+            {{3, 'a'}, 3},
+            {{3, 'b'}, 3},
+            {{4, 'a'}, 1},
+            {{4, 'b'}, 4},
+            {{5, 'a'}, 1},
+            {{5, 'b'}, 4},
+            {{6, 'a'}, 3},
+            {{6, 'b'}, 7},
+            {{2, 'a'}, 3},
+            {{2, 'b'}, 6},
+            {{7, 'a'}, 3},
+            {{7, 'b'}, 6},
+        },
+        0,
+        {2, 7}
+    };
+
+    dfa_minimization(test2);
+    
     return 0;
 
     // Automat from lecture 3, p. 23
