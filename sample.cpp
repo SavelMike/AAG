@@ -435,11 +435,13 @@ Partition new_partition(const Partition &P, const DFA &dfa) {
     Partition T;
     
     for (auto S : P) {
+        std::set<State> S1;
+        std::set<State> S2;
         for (auto a : dfa.m_Alphabet) {
             // Partition S by a
-            std::set<State> S1;
-            std::set<State> S2;
             std::set<State> S1Target;
+            S1 = S1Target;
+            S2 = S1Target;
             for (auto s : S) {
                 auto m = dfa.m_Transitions.find({ s, a });
                 if (m == dfa.m_Transitions.end()) {
@@ -454,25 +456,39 @@ Partition new_partition(const Partition &P, const DFA &dfa) {
                     }
                     if (S1.empty()) {
                         S1Target = tmp;
-                        S1.insert(m->second);
+                        S1.insert(s);
                     }
                     else {
                         if (tmp == S1Target) {
-                            S1.insert(m->second);
+                            S1.insert(s);
                         }
                         else {
-                            S2.insert(m->second);
+                            S2.insert(s);
                         }
                     }
                 }
             }
-            T.insert(S1);
             if (!S2.empty()) {
-                T.insert(S2);
+                break;
             }
+        } // For alphabet
+        T.insert(S1);
+        if (!S2.empty()) {
+            T.insert(S2);
         }
     }
     return T;
+}
+
+Combined_state partition_find(Partition partition, State state) {
+    for (auto i : partition) {
+        auto pos = i.find(state);
+        if (pos != i.end()) {
+            return i;
+        }
+    }
+
+    return Combined_state();
 }
 
 // DFA minimization using partinioning method
@@ -499,7 +515,42 @@ DFA dfa_minimization(const DFA& a) {
         }
         partition = partition2;
     }
-   
+    
+    // Build minimized DFA
+    res.m_Alphabet = a.m_Alphabet;
+    State st = 1;
+    std::map<Combined_state, State> class2state;
+    for (auto i : partition) {
+        res.m_States.insert(st);
+        class2state.insert({ i, st });
+        // Determine initial state
+        auto init_state = i.find(a.m_InitialState);
+        if (init_state != i.end()) {
+            res.m_InitialState = st;
+        }
+        // Determine final states
+        for (auto j : a.m_FinalStates) {
+            auto fin_state = i.find(j);
+            if (fin_state != i.end()) {
+                res.m_FinalStates.insert(st);
+            }
+        }
+        st++;
+    }
+
+    // Determine transitions
+    for (auto tr : a.m_Transitions) {
+        // (state, sym) -> value
+        auto state = tr.first.first;
+        auto sym = tr.first.second;
+        auto value = tr.second;
+        Combined_state cs = partition_find(partition, state);
+        State s = class2state.find(cs)->second;
+        cs = partition_find(partition, value);
+        State v = class2state.find(cs)->second;
+        res.m_Transitions.insert({ {s, sym}, v });
+    }
+
     return res;
 }
 
@@ -591,7 +642,7 @@ int main()
         {4},
     };
 //    DFA dfa = nfa_determinization(test1);
-    DFA test2{
+    DFA test2 {
         {0, 1, 2, 3, 4, 5, 6, 7},
         {'a', 'b'},
         {
@@ -616,7 +667,32 @@ int main()
         {2, 7}
     };
 
-    dfa_minimization(test2);
+    DFA test3{
+        {0, 1, 2, 3, 4, 5, 6, 7},
+        {'0', '1'},
+        {
+            {{0, '0'}, 1},
+            {{0, '1'}, 5},
+            {{1, '0'}, 6},
+            {{1, '1'}, 2},
+            {{2, '0'}, 0},
+            {{2, '1'}, 2},
+            {{3, '0'}, 2},
+            {{3, '1'}, 6},
+            {{4, '0'}, 7},
+            {{4, '1'}, 5},
+            {{5, '0'}, 2},
+            {{5, '1'}, 6},
+            {{6, '0'}, 6},
+            {{6, '1'}, 4},
+            {{7, '0'}, 6},
+            {{7, '1'}, 2},
+        },
+        0,
+        {2},
+    };
+    
+    print_dfa("Minimized DFA:\n", dfa_minimization(test3));
     
     return 0;
 
