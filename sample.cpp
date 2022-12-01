@@ -53,6 +53,12 @@ typedef std::set<Combined_state> Partition;
 // This map is filled during determinization of combined states of DFA.
 std::map<Combined_state, State> combined_states;
 State dfa_state = 0;
+
+void reset_combined_states() {
+    combined_states.clear();
+    dfa_state = 0;
+}
+
 // Return value:
 //      true  if combined_state is added
 //      false otherwise
@@ -210,6 +216,7 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
     // This is to gurantee NFAs don't have common states
     NFA b1 = b;
     increase_states_by_delta(b1, find_delta_state(a));
+    
     // 1. Q <- Q1 U Q2 U {q0}
     res.m_States = a.m_States;
     for (auto i : b1.m_States) {
@@ -243,6 +250,7 @@ NFA unify_nfa(const NFA& a, const NFA& b) {
         
     return res;
 }
+
 
 // Calculates epsilon closure for a state \s of NFA \a by definition lecture 3 p. 25
 std::set<State> e_closure(const NFA& a, State s) {
@@ -508,7 +516,8 @@ DFA dfa_minimization(const DFA& a) {
     partition.insert(nonfinal_states);
 
     while (1) {
- //       print_partition(partition);
+        std::cout << "********\n";
+        print_partition(partition);
         partition2 = new_partition(partition, a);
         if (partition == partition2) {
             break;
@@ -555,6 +564,8 @@ DFA dfa_minimization(const DFA& a) {
 }
 
 DFA unify(const NFA& a, const NFA& b) {
+    reset_combined_states();
+    
     // 1. Calculate union NFA with epsilon transition (Lecture 3, p. 12)
     NFA nfa = unify_nfa(a, b);
     print_nfa("NFA with epsilon transition", nfa);
@@ -577,8 +588,95 @@ DFA unify(const NFA& a, const NFA& b) {
     return dfa;
 }
 
+NFA intersect_nfa(const NFA& a, const NFA& b) {
+    NFA nfa;
+
+    nfa.m_Alphabet = a.m_Alphabet;
+    for (auto i : b.m_Alphabet) {
+        nfa.m_Alphabet.insert(i);
+    }
+
+    // This is to gurantee NFAs don't have common states
+    NFA b1 = b;
+    increase_states_by_delta(b1, find_delta_state(a));
+
+    // Determine states of NFA
+    std::set<Combined_state> comb_states;
+    for (auto state1 : a.m_States) {
+        for (auto state2 : b1.m_States) {
+            comb_states.insert({ state1, state2 });
+            store_combined_state({ state1, state2 });
+        }
+    }
+    // Determine final states
+    for (auto fin_state_a : a.m_FinalStates) {
+        for (auto fin_state_b : b1.m_FinalStates) {
+            auto res = combined_states.find({ fin_state_a, fin_state_b });
+            if (res == combined_states.end()) {
+                std::cerr << "Error. Did not find state";
+                exit(1);
+            }
+            nfa.m_FinalStates.insert(res->second);
+        }
+    }
+
+    // Determine initial state
+    auto res = combined_states.find({ a.m_InitialState, b1.m_InitialState });
+    if (res == combined_states.end()) {
+        std::cerr << "Error. Did not find init state";
+        exit(1);
+    }
+    nfa.m_InitialState = res->second;
+
+    // Create transition function
+    std::map<std::pair<Combined_state, Symbol>, Partition> tf;
+    for (auto state : comb_states) {
+        State a_state;
+        State b_state;
+        Combined_state::iterator it = state.begin();
+        a_state = *it;
+        advance(it, 1);
+        b_state = *it;
+        for (auto sym : nfa.m_Alphabet) {
+            auto pos_a = a.m_Transitions.find({ a_state, sym });
+            auto pos_b = b1.m_Transitions.find({ b_state, sym });
+            if ((pos_a == a.m_Transitions.end()) || (pos_b == b1.m_Transitions.end())) {
+                continue;
+            }
+            Partition part;
+            for (auto a : pos_a->second) {
+                for (auto b : pos_b->second) {
+                    part.insert({ a, b });
+                }
+            }
+            tf.insert({ {{ a_state, b_state }, sym}, part });
+        }
+    }
+
+    print_nfa("Automat a:\n", a);
+    print_nfa("Automat b:\n", b1);
+    print_nfa("Res automat nfa:\n", nfa);
+    std::cout << "Res automat states:\n";
+    print_partition(comb_states);
+
+    std::cout << "Transitive function:\n";
+    for (auto i : tf) {
+        std::cout << "(";
+        print_comb_state(i.first.first);
+        std::cout << ", '" << i.first.second << "') -> ";
+        print_partition(i.second);
+    }
+
+    return nfa;
+}
+
+// Intersection algorithm (Lecture 3, p. 17)
 DFA intersect(const NFA& a, const NFA& b) {
+    reset_combined_states();
+    
     DFA dfa;
+    intersect_nfa(a, b);
+    
     return dfa;
 }
 
@@ -655,8 +753,6 @@ void print_dfa(std::string text, const DFA& a) {
 
 int main()
 {
-
-
     // Automat from lecture 3, p. 4
     NFA test1 {
         {1, 2, 3, 4}, // q, q0, q1, qf
@@ -672,7 +768,27 @@ int main()
         1,
         {4},
     };
-//    DFA dfa = nfa_determinization(test1);
+
+    NFA test02{
+        {0, 1, 2},
+        {'0', '1'},
+        {
+            {{0, '0'}, {0}},
+            {{0, '1'}, {1}},
+            {{1, '0'}, {1,2}},
+            {{1, '1'}, {1}},
+            {{2, '0'}, {2}},
+            {{2, '1'}, {1,2}},
+        },
+        0,
+        {2},
+    };
+
+//    DFA dfa = nfa_determinization(test02);
+//    print_dfa("Determinized dfa", dfa);
+
+//    return 0;
+
     DFA test2 {
         {0, 1, 2, 3, 4, 5, 6, 7},
         {'a', 'b'},
@@ -761,12 +877,12 @@ int main()
             {{4, 'b'}, 4},
         },
         0,
-        {4},
+        {3},
     };
 
-    print_dfa("Minimized DFA:\n", dfa_minimization(test5));
+//    print_dfa("Minimized DFA:\n", dfa_minimization(test5));
     
-    return 0;
+//    return 0;
 
     // Automat from lecture 3, p. 23
     NFA test {
@@ -827,7 +943,7 @@ int main()
         0,
         {2},
     };
-//    assert(intersect(a1, a2) == a);
+    assert(intersect(a1, a2) == a);
 
     NFA b1{
         {0, 1, 2, 3, 4},
