@@ -83,7 +83,6 @@ void print_comb_state(Combined_state state) {
 }
 
 void print_partition(const Partition& partition) {
-    std::cout << "Print partition\n";
     std::cout << "{\n";
     for (auto i : partition) {
         std::cout << "  ";
@@ -606,6 +605,12 @@ NFA intersect_nfa(const NFA& a, const NFA& b) {
         for (auto state2 : b1.m_States) {
             comb_states.insert({ state1, state2 });
             store_combined_state({ state1, state2 });
+            auto pos = combined_states.find({ state1, state2 });
+            if (pos == combined_states.end()) {
+                std::cerr << "Error. Failed to find mumber";
+                exit(1);
+            }
+            nfa.m_States.insert(pos->second);
         }
     }
     // Determine final states
@@ -629,7 +634,6 @@ NFA intersect_nfa(const NFA& a, const NFA& b) {
     nfa.m_InitialState = res->second;
 
     // Create transition function
-    std::map<std::pair<Combined_state, Symbol>, Partition> tf;
     for (auto state : comb_states) {
         State a_state;
         State b_state;
@@ -649,23 +653,28 @@ NFA intersect_nfa(const NFA& a, const NFA& b) {
                     part.insert({ a, b });
                 }
             }
-            tf.insert({ {{ a_state, b_state }, sym}, part });
+            auto res = combined_states.find({ a_state, b_state });
+            Combined_state val;
+            for (auto p : part) {
+                auto s = combined_states.find(p);
+                val.insert(s->second);
+            }
+            nfa.m_Transitions.insert({{ res->second, sym }, val });
         }
     }
-
+#if 0
     print_nfa("Automat a:\n", a);
     print_nfa("Automat b:\n", b1);
     print_nfa("Res automat nfa:\n", nfa);
-    std::cout << "Res automat states:\n";
-    print_partition(comb_states);
-
-    std::cout << "Transitive function:\n";
-    for (auto i : tf) {
+    std::cout << "Map of state pairs to state\n";
+    
+    for (auto cs : comb_states) {
+        auto pos = combined_states.find(cs);
         std::cout << "(";
-        print_comb_state(i.first.first);
-        std::cout << ", '" << i.first.second << "') -> ";
-        print_partition(i.second);
+        print_comb_state(cs);
+        std::cout << ") -> " << pos->second << "\n";
     }
+#endif
 
     return nfa;
 }
@@ -674,8 +683,20 @@ NFA intersect_nfa(const NFA& a, const NFA& b) {
 DFA intersect(const NFA& a, const NFA& b) {
     reset_combined_states();
     
-    DFA dfa;
-    intersect_nfa(a, b);
+    // 1. Intersect NFA
+    NFA nfa = intersect_nfa(a, b);
+    print_nfa("Intersected nfa:\n", nfa);
+
+    // 2. NFA determinization (subset construction) (Lecture 3, p.3)
+    DFA dfa = nfa_determinization(nfa);
+    print_dfa("DFA", dfa);
+
+    // 3. Remove unreachable states
+    unreachable_states_removal(dfa);
+
+    // 4. DFA minimization (Algorithm Moore) (Lecture 3, p. 31)
+    dfa = dfa_minimization(dfa);
+    print_dfa("Minimized DFA", dfa);
     
     return dfa;
 }
