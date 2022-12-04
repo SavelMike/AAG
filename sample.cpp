@@ -21,6 +21,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <bitset>
 
 using State = unsigned int;
 using Symbol = uint8_t;
@@ -638,6 +639,7 @@ DFA remove_redundant_states(const DFA& dfa)
 				res.m_Transitions.insert({{q, sym}, pos->second});
 		}
 	}
+    res.m_States.insert(dfa.m_InitialState);
 
 	return res;
 }
@@ -998,17 +1000,17 @@ DFA intersect(const NFA& a, const NFA& b) {
     reset_combined_states();
     
     NFA nfa = intersect_nfa(a, b);
-//    print_nfa("result of intersect", nfa);
+    print_nfa("result of intersect", nfa);
     
     DFA dfa = nfa2dfa(nfa);
-//    print_dfa("result of determinization", dfa);
+    print_dfa("result of determinization", dfa);
     
 //    dfa = unreachable_states_removal(dfa);
     
     dfa = dfa_minimization(dfa);
-//    print_dfa("result of minimization", dfa);
+    print_dfa("result of minimization", dfa);
+    
     return remove_redundant_states(dfa);
-;
 }
 
 #ifndef __PROGTEST__
@@ -1258,7 +1260,7 @@ void test_dfa(const std::string& text, const DFA& dfa, const std::set<std::strin
 			std::cout << i << std::endl;
 		} else {
 			rejected++;
-			std::cout << "****** " << i << std::endl;
+//			std::cout << "****** " << i << std::endl;
 		}
 	}
 	std::cout << "==== accepted " << accepted << ", rejected " << rejected << std::endl;
@@ -1268,6 +1270,7 @@ int main()
 {
 	std::set<std::string> data = test_strings(4);
 
+#if 0
     /*
      * two last chars are 'a'
      */
@@ -1336,8 +1339,6 @@ int main()
         0,
         {1, 4},
     };
-    DFA b1dfa = nfa2dfa(b1);
-    test_dfa("b1", b1dfa, data);
 
     NFA b2{
         {0, 1, 2, 3, 4},
@@ -1353,8 +1354,6 @@ int main()
         0,
         {4},
     };
-    DFA b2dfa = nfa2dfa(b2);
-    test_dfa("b2", b2dfa, data);
 
     DFA b {
         {0, 1, 2, 3, 4, 5, 6, 7, 8},
@@ -1380,15 +1379,15 @@ int main()
         0,
         {1, 5, 8},
     };
-    test_dfa("b1 U b2", b, data);
+//    test_dfa("b1 U b2", b, data);
 
     res = unify(b1, b2);
-    print_dfa("b", b);
-    print_dfa("unify b1 b2", res);
-    test_dfa("b1 U b2", b, data);
+//    print_dfa("b", b);
+//    print_dfa("unify b1 b2", res);
+//    test_dfa("b1 U b2", b, data);
 
 //    assert(unify(b1, b2) == b);
-
+# endif
 
     NFA c1{
         {0, 1, 2, 3, 4},
@@ -1403,6 +1402,9 @@ int main()
         0,
         {1, 4},
     };
+ //   DFA c1dfa = nfa2dfa(c1);
+//    test_dfa("c1", c1dfa, data);
+
     NFA c2{
         {0, 1, 2},
         {'a', 'b'},
@@ -1414,6 +1416,9 @@ int main()
         0,
         {2},
     };
+//    DFA c2dfa = nfa2dfa(c2);
+//    test_dfa("c2", c2dfa, data);
+
     DFA c{
         {0},
         {'a', 'b'},
@@ -1421,9 +1426,9 @@ int main()
         0,
         {},
     };
-    res = intersect(c1, c2);
-    print_dfa("c", c);
+    DFA res = intersect(c1, c2);
     print_dfa("intersect c1 c2", res);
+    print_dfa("c", c);
 
 //    assert(intersect(c1, c2) == c);
 
