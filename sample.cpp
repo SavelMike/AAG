@@ -597,7 +597,7 @@ DFA unreachable_states_removal(const DFA& a) {
         Q_cur = Q_next;
     }
 
-    std::cout << "No reachable states:\n";
+    std::cout << "Reachable states:\n";
     print_comb_state(Q_cur);
     std::cout << "\n";
 
@@ -762,7 +762,7 @@ DFA nfa2dfa(const NFA& a)
                     uni.insert(666);
                 }
                 if (dfax.get_states().find(uni) == dfax.get_states().end()) {
-                    /* new state is built, add to NFAx */
+                    /* new state is built, add to DFAx */
                     added_states.insert(uni);
                     dfax.add_state(uni);
                 }
@@ -775,7 +775,7 @@ DFA nfa2dfa(const NFA& a)
     
     /* final states */
     for (auto i : dfax.get_states()) {
-        /* i is Comboned_state */
+        /* i is Combined_state */
         for (auto j : i) {
             if (a.m_FinalStates.find(j) != a.m_FinalStates.end()) {
                 dfax.add_final_state(i);
@@ -815,25 +815,23 @@ DFA dfa_minimization(const DFA& a) {
     }
 
     // Build minimized DFA
-    res.m_Alphabet = a.m_Alphabet;
-    State st = 0;
+    DFAx dfax;
+    dfax.set_alphabet(a.m_Alphabet);
     std::map<Combined_state, State> class2state;
     for (auto i : partition) {
-        res.m_States.insert(st);
-        class2state.insert({ i, st });
+        dfax.add_state(i);
         // Determine initial state
         auto init_state = i.find(a.m_InitialState);
         if (init_state != i.end()) {
-            res.m_InitialState = st;
+            dfax.set_init_state(i);
         }
         // Determine final states
         for (auto j : a.m_FinalStates) {
             auto fin_state = i.find(j);
             if (fin_state != i.end()) {
-                res.m_FinalStates.insert(st);
+                dfax.add_final_state(i);
             }
         }
-        st++;
     }
 
     // Determine transitions
@@ -842,14 +840,28 @@ DFA dfa_minimization(const DFA& a) {
         auto state = tr.first.first;
         auto sym = tr.first.second;
         auto value = tr.second;
-        Combined_state cs = partition_find(partition, state);
-        State s = class2state.find(cs)->second;
-        cs = partition_find(partition, value);
-        State v = class2state.find(cs)->second;
-        res.m_Transitions.insert({ {s, sym}, v });
-    }
+        Combined_state cs_state;
+        Combined_state cs_value;
+        for (auto cs : dfax.get_states()) {
+            auto pos = cs.find(state);
+            if (pos != cs.end()) {
+                cs_state = cs;
+                break;
+            }
+        }
+        for (auto cs : dfax.get_states()) {
+            auto pos = cs.find(value);
+            if (pos != cs.end()) {
+                cs_value = cs;
+                break;
+            }
+        }
 
-    return res;
+        dfax.add_transition({ cs_state, sym }, cs_value);
+    }
+    dfax.print("Min");
+
+    return dfax.dfax2dfa();
 }
 
 DFA unify(const NFA& a, const NFA& b) {
@@ -950,7 +962,7 @@ DFA intersect(const NFA& a, const NFA& b) {
     DFA dfa = nfa2dfa(nfa);
     print_dfa("result of determinization", dfa);
     
-    dfa = unreachable_states_removal(dfa);
+//    dfa = unreachable_states_removal(dfa);
     
     dfa = dfa_minimization(dfa);
     print_dfa("result of minimization", dfa);
@@ -1064,14 +1076,12 @@ void test_nfa2dfa(void)
         {2},
     };
     print_dfa("test on page 6", nfa2dfa(m2));
-    std::cout << std::endl;
-    
-    
+    std::cout << std::endl; 
 }
 
 void test_dfa2mindfa(void)
 {
-    /* test form https://www.youtube.com/watch?v=0XaGAkY09Wc */
+    /* test from https://www.youtube.com/watch?v=0XaGAkY09Wc */
     DFA m {
         {0, 1, 2, 3, 4}, // A, B, C, D, E
         {'0', '1'},
@@ -1091,6 +1101,60 @@ void test_dfa2mindfa(void)
         {4},
     };
     print_dfa("min", dfa_minimization(m));
+    std::cout << std::endl;
+
+    DFA m2{
+      {0, 1, 2, 3, 4, 5, 6, 7},
+      {'0', '1'},
+      {
+          {{0, '0'}, 1},
+          {{0, '1'}, 5},
+          {{1, '0'}, 6},
+          {{1, '1'}, 2},
+          {{2, '0'}, 0},
+          {{2, '1'}, 2},
+          {{3, '0'}, 2},
+          {{3, '1'}, 6},
+          {{4, '0'}, 7},
+          {{4, '1'}, 5},
+          {{5, '0'}, 2},
+          {{5, '1'}, 6},
+          {{6, '0'}, 6},
+          {{6, '1'}, 4},
+          {{7, '0'}, 6},
+          {{7, '1'}, 2},
+      },
+      0,
+      {2},
+    };
+
+    print_dfa("min2", dfa_minimization(m2));
+    std::cout << std::endl;
+
+    // Lecture 3, p. 32
+    DFA m3{
+        {0, 1, 2, 3, 4, 5},
+        {'a', 'b'},
+        {
+            {{0, 'a'}, 5},
+            {{0, 'b'}, 1},
+            {{1, 'a'}, 4},
+            {{1, 'b'}, 3},
+            {{2, 'a'}, 2},
+            {{2, 'b'}, 5},
+            {{3, 'a'}, 3},
+            {{3, 'b'}, 0},
+            {{4, 'a'}, 1},
+            {{4, 'b'}, 2},
+            {{5, 'a'}, 0},
+            {{5, 'b'}, 4},
+        },
+        0,
+        {0, 5},
+    };
+
+    print_dfa("DFA m3:", m3);
+    print_dfa("min3", dfa_minimization(m3));
     std::cout << std::endl;
 }
 
@@ -1118,7 +1182,7 @@ int main()
     test_nfa2dfa();
     
     test_dfa2mindfa();
-    return 0;
+ //   return 0;
 
 #if 1
     NFA test02{
@@ -1135,37 +1199,7 @@ int main()
         0,
         {2},
     };
-
-//    DFA dfa = nfa_determinization(test02);
-//    print_dfa("Determinized dfa", dfa);
-
-//    return 0;
-
-    DFA test2 {
-        {0, 1, 2, 3, 4, 5, 6, 7},
-        {'a', 'b'},
-        {
-            {{0, 'a'}, 1},
-            {{0, 'b'}, 4},
-            {{1, 'a'}, 5},
-            {{1, 'b'}, 2},
-            {{3, 'a'}, 3},
-            {{3, 'b'}, 3},
-            {{4, 'a'}, 1},
-            {{4, 'b'}, 4},
-            {{5, 'a'}, 1},
-            {{5, 'b'}, 4},
-            {{6, 'a'}, 3},
-            {{6, 'b'}, 7},
-            {{2, 'a'}, 3},
-            {{2, 'b'}, 6},
-            {{7, 'a'}, 3},
-            {{7, 'b'}, 6},
-        },
-        0,
-        {2, 7}
-    };
-
+  
     DFA test3{
         {0, 1, 2, 3, 4, 5, 6, 7},
         {'0', '1'},
@@ -1190,28 +1224,6 @@ int main()
         0,
         {2},
     };
-    
-    // Lecture 3, p. 32
-    DFA test4 {
-        {0, 1, 2, 3, 4, 5},
-        {'a', 'b'},
-        {
-            {{0, 'a'}, 5},
-            {{0, 'b'}, 1},
-            {{1, 'a'}, 4},
-            {{1, 'b'}, 3},
-            {{2, 'a'}, 2},
-            {{2, 'b'}, 5},
-            {{3, 'a'}, 3},
-            {{3, 'b'}, 0},
-            {{4, 'a'}, 1},
-            {{4, 'b'}, 2},
-            {{5, 'a'}, 0},
-            {{5, 'b'}, 4},
-        },
-        0,
-        {0, 5},
-    };
 
     DFA test5{
         {0, 1, 2, 3, 4},
@@ -1232,10 +1244,6 @@ int main()
         {3},
     };
 
-//    print_dfa("Minimized DFA:\n", dfa_minimization(test5));
-    
-//    return 0;
-
     // Automat from lecture 3, p. 23
     NFA test {
         {0, 1, 2},
@@ -1250,11 +1258,6 @@ int main()
         0,
         {2},
     };
-
-//    print_nfa("Orig\n", test);
-//    print_nfa("Epsilon transition removal\n", e_transition_removal(test));
-    
-//    return 0;
 
     NFA a1{
         {0, 1, 2},
