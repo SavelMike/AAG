@@ -597,6 +597,7 @@ DFA unreachable_states_removal(const DFA& a) {
         Q_cur = Q_next;
     }
 
+    assert(Q_cur == a.m_States);
     std::cout << "Reachable states:\n";
     print_comb_state(Q_cur);
     std::cout << "\n";
@@ -604,6 +605,45 @@ DFA unreachable_states_removal(const DFA& a) {
     return DFA();
 }
 
+/**
+ * identification of useful states and removal of redundant states
+ * lecture 2, p. 20
+ */
+DFA remove_redundant_states(const DFA& dfa)
+{
+	DFA res;
+
+	res.m_States = dfa.m_FinalStates;
+	while (1) {
+		Combined_state Q = res.m_States;
+		for (auto p : res.m_States) {
+			for (auto t : dfa.m_Transitions) {
+				if (t.second == p)
+					Q.insert(t.first.first);
+			}
+		}
+		if (Q == res.m_States)
+			break;
+		res.m_States = Q;
+	}
+	res.m_Alphabet = dfa.m_Alphabet;
+	res.m_InitialState = dfa.m_InitialState;
+	res.m_FinalStates = dfa.m_FinalStates;
+	for (auto q: res.m_States) {
+		for (auto sym: res.m_Alphabet) {
+			auto pos = dfa.m_Transitions.find({q, sym});
+			if (pos == dfa.m_Transitions.end())
+				continue;
+			if (res.m_States.find(pos->second) != res.m_States.end())
+				res.m_Transitions.insert({{q, sym}, pos->second});
+		}
+	}
+
+	return res;
+}
+
+
+#if 0
 // NFA to DFA conversion using subset construction
 // Input:
 //      NFA    
@@ -728,6 +768,7 @@ DFA nfa_determinization(const NFA& a) {
     return res;
     
 }
+#endif
 
 /**
  * Convert NFA \a a to DFA
@@ -784,7 +825,7 @@ DFA nfa2dfa(const NFA& a)
         }
     }
     
-    dfax.print("determinized");
+//    dfax.print("determinized");
     return dfax.dfax2dfa();
 }
 
@@ -805,8 +846,8 @@ DFA dfa_minimization(const DFA& a) {
     partition.insert(nonfinal_states);
 
     while (1) {
-        std::cout << "********\n";
-        print_partition(partition);
+//        std::cout << "********\n";
+//        print_partition(partition);
         partition2 = new_partition(partition, a);
         if (partition == partition2) {
             break;
@@ -859,7 +900,7 @@ DFA dfa_minimization(const DFA& a) {
 
         dfax.add_transition({ cs_state, sym }, cs_value);
     }
-    dfax.print("Min");
+//    dfax.print("Min");
 
     return dfax.dfax2dfa();
 }
@@ -869,24 +910,24 @@ DFA unify(const NFA& a, const NFA& b) {
     
     // 1. Calculate union NFA with epsilon transition (Lecture 3, p. 12)
     NFA nfa = unify_nfa(a, b);
-    print_nfa("NFA with epsilon transition", nfa);
+    //print_nfa("NFA with epsilon transition", nfa);
 
     // 2. Convert res into NFA without epsilon transition (Lecture 2, p. 26)
     nfa = e_transition_removal(nfa);
-    print_nfa("NFA without epsilon transition", nfa);
+    //print_nfa("NFA without epsilon transition", nfa);
     
     // 3. NFA determinization (subset construction) (Lecture 3, p.3)
-    DFA dfa = nfa_determinization(nfa);
-    print_dfa("DFA", dfa);
+    DFA dfa = nfa2dfa(nfa);
+    //print_dfa("DFA", dfa);
 
     // 4. Remove unreachable states
     unreachable_states_removal(dfa);
     
     // 5. DFA minimization (Algorithm Moore) (Lecture 3, p. 31)
     dfa = dfa_minimization(dfa);
-    print_dfa("Minimized DFA", dfa);
+    //print_dfa("Minimized DFA", dfa);
 
-    return dfa;
+    return remove_redundant_states(dfa);
 }
 
 /**
@@ -945,9 +986,9 @@ NFA intersect_nfa(const NFA& a, const NFA& b)
         }
     }
 
-    print_nfa("Automat a:\n", a);
-    print_nfa("Automat b:\n", b1);
-    nfax.print("a, b intersect");
+//    print_nfa("Automat a:\n", a);
+//    print_nfa("Automat b:\n", b1);
+//    nfax.print("a, b intersect");
 
     return nfax.nfax2nfa();
 }
@@ -957,16 +998,17 @@ DFA intersect(const NFA& a, const NFA& b) {
     reset_combined_states();
     
     NFA nfa = intersect_nfa(a, b);
-    print_nfa("result of intersect", nfa);
+//    print_nfa("result of intersect", nfa);
     
     DFA dfa = nfa2dfa(nfa);
-    print_dfa("result of determinization", dfa);
+//    print_dfa("result of determinization", dfa);
     
 //    dfa = unreachable_states_removal(dfa);
     
     dfa = dfa_minimization(dfa);
-    print_dfa("result of minimization", dfa);
-    return dfa;
+//    print_dfa("result of minimization", dfa);
+    return remove_redundant_states(dfa);
+;
 }
 
 #ifndef __PROGTEST__
@@ -1158,108 +1200,78 @@ void test_dfa2mindfa(void)
     std::cout << std::endl;
 }
 
+#define MAXLEN 8
+std::set<std::string> test_strings(int maxlen)
+{
+	std::set<std::string> strings;
+	std::stringstream s;
+
+	if (maxlen > MAXLEN) {
+		std::cerr  << "too long strings, 10 is max";
+		exit(1);
+	}
+
+	int n = 1 << maxlen;
+
+	for (int i = 1; i <= maxlen; i++) {
+		n = 1 << i;
+		for (int j = 0; j < n; j++) {
+			std::bitset<MAXLEN> b(j);
+			s.str(std::string());
+			s << b;
+			std::string str = s.str();
+			str = str.substr(str.size() - i, i);
+
+			std::replace( str.begin(), str.end(), '0', 'a');
+			std::replace( str.begin(), str.end(), '1', 'b');
+//			std::cout << str << std::endl;
+			strings.insert(str);
+		}
+	}
+	return strings;
+}
+
+bool accept(const DFA& dfa, const std::string str)
+{
+	State s = dfa.m_InitialState;
+	for (auto i : str) {
+		auto pos = dfa.m_Transitions.find({s, i});
+		if (pos == dfa.m_Transitions.end())
+			return false;
+		s = pos->second;
+	}
+	auto pos = dfa.m_FinalStates.find(s);
+	if (pos == dfa.m_FinalStates.end())
+		return false;
+	return true;
+}
+
+void test_dfa(const std::string& text, const DFA& dfa, const std::set<std::string>& strings)
+{
+	int accepted = 0;
+	int rejected = 0;
+
+	std::cout << "====" << text << "=====\n";
+	for (auto i: strings) {
+		if (accept(dfa, i)) {
+			accepted++;
+			std::cout << i << std::endl;
+		} else {
+			rejected++;
+			std::cout << "****** " << i << std::endl;
+		}
+	}
+	std::cout << "==== accepted " << accepted << ", rejected " << rejected << std::endl;
+}
+
 int main()
 {
-#if 0
-    /* test from https://www.youtube.com/watch?v=i-fk9o46oVY */
-    NFA x {
-        {1, 2, 3}, /* A, B, C */
-        {'a', 'b'},
-        {
-            {{1, 'a'}, {1, 2}}, /* (A, a) -> A,B */
-            {{1, 'b'}, {3}},    /* (A, b) -> C */
-            {{2, 'a'}, {1}},    /* (B, a) -> A */
-            {{2, 'b'}, {2}},    /* (B, b) -> B */
-            {{3, 'b'}, {1, 2}}, /* (C, b) -> A,B */
-        },
-        1,
-        {3},
-    };
-    DFA dfa = nfa_determinization_new(x);
-    print_dfa("result of determinization: ", dfa);
-    return 0;
-#endif
-    test_nfa2dfa();
-    
-    test_dfa2mindfa();
- //   return 0;
+	std::set<std::string> data = test_strings(4);
 
-#if 1
-    NFA test02{
-        {0, 1, 2},
-        {'0', '1'},
-        {
-            {{0, '0'}, {0}},
-            {{0, '1'}, {1}},
-            {{1, '0'}, {1,2}},
-            {{1, '1'}, {1}},
-            {{2, '0'}, {2}},
-            {{2, '1'}, {1,2}},
-        },
-        0,
-        {2},
-    };
-  
-    DFA test3{
-        {0, 1, 2, 3, 4, 5, 6, 7},
-        {'0', '1'},
-        {
-            {{0, '0'}, 1},
-            {{0, '1'}, 5},
-            {{1, '0'}, 6},
-            {{1, '1'}, 2},
-            {{2, '0'}, 0},
-            {{2, '1'}, 2},
-            {{3, '0'}, 2},
-            {{3, '1'}, 6},
-            {{4, '0'}, 7},
-            {{4, '1'}, 5},
-            {{5, '0'}, 2},
-            {{5, '1'}, 6},
-            {{6, '0'}, 6},
-            {{6, '1'}, 4},
-            {{7, '0'}, 6},
-            {{7, '1'}, 2},
-        },
-        0,
-        {2},
-    };
-
-    DFA test5{
-        {0, 1, 2, 3, 4},
-        {'a', 'b'},
-        {
-            {{0, 'a'}, 1},
-            {{0, 'b'}, 4},
-            {{1, 'a'}, 1},
-            {{1, 'b'}, 2},
-            {{2, 'a'}, 1},
-            {{2, 'b'}, 3},
-            {{3, 'a'}, 1},
-            {{3, 'b'}, 4},
-            {{4, 'a'}, 1},
-            {{4, 'b'}, 4},
-        },
-        0,
-        {3},
-    };
-
-    // Automat from lecture 3, p. 23
-    NFA test {
-        {0, 1, 2},
-        {'a', 'b', 'c'},
-        {
-            {{0, 'a'}, {0}},
-            {{0, '\0'}, {1}},
-            {{1, 'b'}, {1}},
-            {{1, '\0'}, {2}},
-            {{2, 'c'}, {2}},
-        },
-        0,
-        {2},
-    };
-
-    NFA a1{
+    /*
+     * two last chars are 'a'
+     */
+    NFA a1 {
         {0, 1, 2},
         {'a', 'b'},
         {
@@ -1270,7 +1282,11 @@ int main()
         0,
         {2},
     };
-    NFA a2{
+
+    /*
+     * two first chars are 'a'
+     */
+    NFA a2 {
         {0, 1, 2}, // 3,4,5
         {'a', 'b'},
         {
@@ -1282,7 +1298,11 @@ int main()
         0,
         {2},
     };
-    DFA a{
+
+    /*
+     * two first chars and two last chars are 'a'
+     */
+    DFA a {
         {0, 1, 2, 3, 4},
         {'a', 'b'},
         {
@@ -1298,9 +1318,10 @@ int main()
         0,
         {2},
     };
-    std::cout << "Test a\n";
-    assert(intersect(a1, a2) == a);
-    return 0;
+    DFA res = intersect(a1, a2);
+    print_dfa("a", a);
+    print_dfa("intersect a1 a2", res);
+//    assert(intersect(a1, a2) == a);
 
     NFA b1{
         {0, 1, 2, 3, 4},
@@ -1315,6 +1336,9 @@ int main()
         0,
         {1, 4},
     };
+    DFA b1dfa = nfa2dfa(b1);
+    test_dfa("b1", b1dfa, data);
+
     NFA b2{
         {0, 1, 2, 3, 4},
         {'a', 'b'},
@@ -1329,6 +1353,9 @@ int main()
         0,
         {4},
     };
+    DFA b2dfa = nfa2dfa(b2);
+    test_dfa("b2", b2dfa, data);
+
     DFA b {
         {0, 1, 2, 3, 4, 5, 6, 7, 8},
         {'a', 'b'},
@@ -1353,9 +1380,15 @@ int main()
         0,
         {1, 5, 8},
     };
-    assert(unify(b1, b2) == b);
+    test_dfa("b1 U b2", b, data);
 
-    return 0;
+    res = unify(b1, b2);
+    print_dfa("b", b);
+    print_dfa("unify b1 b2", res);
+    test_dfa("b1 U b2", b, data);
+
+//    assert(unify(b1, b2) == b);
+
 
     NFA c1{
         {0, 1, 2, 3, 4},
@@ -1388,8 +1421,11 @@ int main()
         0,
         {},
     };
+    res = intersect(c1, c2);
+    print_dfa("c", c);
+    print_dfa("intersect c1 c2", res);
+
 //    assert(intersect(c1, c2) == c);
-    unify(c1, c2);
 
     NFA d1{
         {0, 1, 2, 3},
@@ -1435,8 +1471,11 @@ int main()
         0,
         {1, 2, 3},
     };
-//    assert(intersect(d1, d2) == d);
-    unify(d1, d2);
-#endif
+    res = intersect(d1, d2);
+    print_dfa("d", d);
+    print_dfa("intersect d1 d2", res);
+    //    assert(intersect(d1, d2) == d);
+
+//    unify(d1, d2);
 }
 #endif
