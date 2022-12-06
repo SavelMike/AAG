@@ -361,11 +361,12 @@ Combined_state partition_find(Partition partition, State state) {
     return Combined_state();
 }
 
+#define DEADSTATE 0xffffffff
 // Find and return the biggest value of NFA states
 State find_delta_state(const NFA& a) {
     State max_state = 0;
     for (auto i : a.m_States) {
-        if (i > max_state) {
+        if (i != DEADSTATE && i > max_state) {
             max_state = i;
         }
     }
@@ -377,15 +378,26 @@ State find_delta_state(const NFA& a) {
 void increase_states_by_delta(NFA& a, State delta) {
     // Modify set of states
     std::set<State> states;
+
     for (auto i : a.m_States) {
-        states.insert(i + delta);
+        if (i != DEADSTATE) {
+            states.insert(i + delta);
+        }
+        else {
+            states.insert(DEADSTATE - 1);
+        }
     }
     a.m_States = states;
 
     // Modify set of final states
     states.clear();
     for (auto i : a.m_FinalStates) {
-        states.insert(i + delta);
+        if (i != DEADSTATE) {
+            states.insert(i + delta);
+        }
+        else {
+            states.insert(DEADSTATE - 1);
+        }
     }
     a.m_FinalStates = states;
 
@@ -396,10 +408,20 @@ void increase_states_by_delta(NFA& a, State delta) {
     std::map<std::pair<State, Symbol>, std::set<State>> transitions;
     for (auto j : a.m_Transitions) {
         std::pair<State, Symbol> key = j.first;
-        key.first += delta;
+        if (key.first != DEADSTATE) {
+            key.first += delta;
+        }
+        else {
+            key.first = DEADSTATE - 1;
+        }
         std::set<State> value;
         for (auto k : j.second) {
-            value.insert(k + delta);
+            if (k != DEADSTATE) {
+                value.insert(k + delta);
+            }
+            else {
+                value.insert(DEADSTATE - 1);
+            }
         }
         transitions.insert({ key, value });
     }
@@ -711,7 +733,7 @@ DFA nfa2dfa(const NFA& a)
                 }
                 if (uni.size() == 0) {
                     /* (cs, sym) -> nowhere. add dead state */
-                    uni.insert(666);
+                    uni.insert(DEADSTATE);
                 }
                 if (dfax.get_states().find(uni) == dfax.get_states().end()) {
                     /* new state is built, add to DFAx */
@@ -821,12 +843,12 @@ NFA total_nfa(const NFA& nfa)
     tnfa.m_InitialState = nfa.m_InitialState;
     tnfa.m_FinalStates = nfa.m_FinalStates;
     tnfa.m_States = nfa.m_States;
-    tnfa.m_States.insert(666);
+    tnfa.m_States.insert(DEADSTATE);
     for (auto s : tnfa.m_States) {
         for (auto a : nfa.m_Alphabet) {
             auto pos = nfa.m_Transitions.find({ s, a });
             if (pos == nfa.m_Transitions.end()) {
-                tnfa.m_Transitions.insert({ {s, a}, {666} });
+                tnfa.m_Transitions.insert({ {s, a}, {DEADSTATE} });
             }
             else {
                 tnfa.m_Transitions.insert({ {s, a}, pos->second });
@@ -1025,6 +1047,7 @@ void print_dfa(std::string text, const DFA& a) {
 
 int main()
 {
+    std::cout << sizeof(unsigned int) << "\n";
     /*
      * two last chars are 'a'
      */
