@@ -361,12 +361,11 @@ Combined_state partition_find(Partition partition, State state) {
     return Combined_state();
 }
 
-#define DEADSTATE 0xffffffff
 // Find and return the biggest value of NFA states
 State find_delta_state(const NFA& a) {
     State max_state = 0;
     for (auto i : a.m_States) {
-        if (i != DEADSTATE && i > max_state) {
+        if (i > max_state) {
             max_state = i;
         }
     }
@@ -374,30 +373,21 @@ State find_delta_state(const NFA& a) {
     return max_state + 1;
 }
 
+
 // Modify all states of NFA a by adding delta
 void increase_states_by_delta(NFA& a, State delta) {
     // Modify set of states
     std::set<State> states;
 
     for (auto i : a.m_States) {
-        if (i != DEADSTATE) {
-            states.insert(i + delta);
-        }
-        else {
-            states.insert(DEADSTATE - 1);
-        }
+        states.insert(i + delta);
     }
     a.m_States = states;
 
     // Modify set of final states
     states.clear();
     for (auto i : a.m_FinalStates) {
-        if (i != DEADSTATE) {
-            states.insert(i + delta);
-        }
-        else {
-            states.insert(DEADSTATE - 1);
-        }
+        states.insert(i + delta);
     }
     a.m_FinalStates = states;
 
@@ -408,20 +398,10 @@ void increase_states_by_delta(NFA& a, State delta) {
     std::map<std::pair<State, Symbol>, std::set<State>> transitions;
     for (auto j : a.m_Transitions) {
         std::pair<State, Symbol> key = j.first;
-        if (key.first != DEADSTATE) {
-            key.first += delta;
-        }
-        else {
-            key.first = DEADSTATE - 1;
-        }
+        key.first += delta;
         std::set<State> value;
         for (auto k : j.second) {
-            if (k != DEADSTATE) {
-                value.insert(k + delta);
-            }
-            else {
-                value.insert(DEADSTATE - 1);
-            }
+            value.insert(k + delta);
         }
         transitions.insert({ key, value });
     }
@@ -529,7 +509,7 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
             auto a_pos = a.m_Transitions.find({ a_state, sym });
             auto b_pos = b1.m_Transitions.find({b_state, sym});
             if (a_pos == a.m_Transitions.end() || b_pos == b1.m_Transitions.end()) {
-                ;
+                continue;
             }
             // a_pos->second and b_pos->second are std::set<States>
             std::set<Combined_state> value;
@@ -541,9 +521,8 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
             nfax.add_transition({ st, sym }, value);
         }
     }
-    NFA rc = nfax.nfax2nfa();
-
-    return rc;
+    
+    return nfax.nfax2nfa();
 }
 
 
@@ -733,7 +712,7 @@ DFA nfa2dfa(const NFA& a)
                 }
                 if (uni.size() == 0) {
                     /* (cs, sym) -> nowhere. add dead state */
-                    uni.insert(DEADSTATE);
+                    uni.insert(0xffffffff);
                 }
                 if (dfax.get_states().find(uni) == dfax.get_states().end()) {
                     /* new state is built, add to DFAx */
@@ -758,7 +737,6 @@ DFA nfa2dfa(const NFA& a)
         }
     }
     
-//    dfax.print("determinized");
     return dfax.dfax2dfa();
 }
 
@@ -843,20 +821,26 @@ NFA total_nfa(const NFA& nfa)
     tnfa.m_InitialState = nfa.m_InitialState;
     tnfa.m_FinalStates = nfa.m_FinalStates;
     tnfa.m_States = nfa.m_States;
-    tnfa.m_States.insert(DEADSTATE);
+   
+    State dead_state = *tnfa.m_States.rbegin() + 1;
+    tnfa.m_States.insert(dead_state);
+
     for (auto s : tnfa.m_States) {
         for (auto a : nfa.m_Alphabet) {
             auto pos = nfa.m_Transitions.find({ s, a });
-            if (pos == nfa.m_Transitions.end()) {
-                tnfa.m_Transitions.insert({ {s, a}, {DEADSTATE} });
+            if (pos == nfa.m_Transitions.end()) { 
+                tnfa.m_Transitions.insert({ {s, a}, {dead_state} });
             }
             else {
                 tnfa.m_Transitions.insert({ {s, a}, pos->second });
             }
         }
     }
+
     return tnfa;
 }
+
+std::set<std::string> accepted_strings(const DFA& a);
 
 DFA unify_parallel(const NFA& a, const NFA& b) {
     // 0. Convert a and b to total NFAs
@@ -878,10 +862,6 @@ DFA unify_parallel(const NFA& a, const NFA& b) {
     return remove_redundant_states(dfa);
 }
 
-DFA unify(const NFA& a, const NFA& b) {
-    return unify_parallel(a, b);
-}
-
 DFA unify_eps(const NFA& a, const NFA& b) {    
     // 1. Calculate union NFA with epsilon transition (Lecture 3, p. 12)
     NFA nfa = unify_nfa_eps(a, b);
@@ -901,12 +881,18 @@ DFA unify_eps(const NFA& a, const NFA& b) {
     return remove_redundant_states(dfa);
 }
 
+DFA unify(const NFA& a, const NFA& b) {
+    //    return unify_parallel(a, b);
+    return unify_eps(a, b);
+}
+
 /**
  * Intersection two NFAs using parallel run algorithm (Lecture 3, p. 17)
  */
 NFA intersect_nfa(const NFA& a, const NFA& b)
 {
     NFAx nfax;
+    NFA b1 = b;
 
     nfax.set_alphabet(a.m_Alphabet);
     for (auto i : b.m_Alphabet) {
@@ -914,7 +900,6 @@ NFA intersect_nfa(const NFA& a, const NFA& b)
     }
 
     // This is to gurantee NFAs don't have common states
-    NFA b1 = b;
     increase_states_by_delta(b1, find_delta_state(a));
 
     // Determine states of NFA
@@ -924,6 +909,7 @@ NFA intersect_nfa(const NFA& a, const NFA& b)
             nfax.add_state({a_state, b_state});
         }
     }
+
     // Determine final states
     for (auto a_fin_state : a.m_FinalStates) {
         for (auto b_fin_state : b1.m_FinalStates) {
@@ -975,11 +961,89 @@ DFA intersect(const NFA& a, const NFA& b) {
 
 #ifndef __PROGTEST__
 
+std::set<std::string> data;
+
+#define MAXLEN 8
+std::set<std::string> test_strings(int maxlen)
+{
+    std::set<std::string> strings;
+    std::stringstream s;
+
+    if (maxlen > MAXLEN) {
+        std::cerr << "too long strings, 10 is max";
+        exit(1);
+    }
+
+    int n = 1 << maxlen;
+
+    for (int i = 1; i <= maxlen; i++) {
+        n = 1 << i;
+        for (int j = 0; j < n; j++) {
+            std::bitset<MAXLEN> b(j);
+            s.str(std::string());
+            s << b;
+            std::string str = s.str();
+            str = str.substr(str.size() - i, i);
+
+            std::replace(str.begin(), str.end(), '0', 'a');
+            std::replace(str.begin(), str.end(), '1', 'b');
+            //                      std::cout << str << std::endl;
+            strings.insert(str);
+        }
+    }
+    return strings;
+}
+
+bool accept(const DFA& dfa, const std::string str)
+{
+    State s = dfa.m_InitialState;
+    for (auto i : str) {
+        auto pos = dfa.m_Transitions.find({ s, i });
+        if (pos == dfa.m_Transitions.end())
+            return false;
+        s = pos->second;
+    }
+    auto pos = dfa.m_FinalStates.find(s);
+    if (pos == dfa.m_FinalStates.end())
+        return false;
+    return true;
+}
+
+void test_dfa(const std::string& text, const DFA& dfa, const std::set<std::string>& strings)
+{
+    int accepted = 0;
+    int rejected = 0;
+
+    std::cout << "====" << text << "=====\n";
+    for (auto i : strings) {
+        if (accept(dfa, i)) {
+            accepted++;
+            std::cout << i << std::endl;
+        }
+        else {
+            rejected++;
+            //                      std::cout << "****** " << i << std::endl;
+        }
+    }
+    std::cout << "==== accepted " << accepted << ", rejected " << rejected << std::endl;
+}
+
+std::set<std::string> accepted_strings(const DFA& a) {
+    std::set<std::string> res;
+
+    for (auto st : data) {
+        if (accept(a, st)) {
+            res.insert(st);
+        }
+    }
+
+    return res;
+}
+
 // You may need to update this function or the sample data if your state naming strategy differs.
 bool operator==(const DFA& a, const DFA& b)
 {
-    return std::tie(a.m_States, a.m_Alphabet, a.m_Transitions, a.m_InitialState, a.m_FinalStates) ==
-           std::tie(b.m_States, b.m_Alphabet, b.m_Transitions, b.m_InitialState, b.m_FinalStates);
+    return std::tie(accepted_strings(a)) == std::tie(accepted_strings(b));
 }
 
 void print_nfa(std::string text, const NFA& a) {
@@ -1047,7 +1111,8 @@ void print_dfa(std::string text, const DFA& a) {
 
 int main()
 {
-    std::cout << sizeof(unsigned int) << "\n";
+    data = test_strings(6);
+ 
     /*
      * two last chars are 'a'
      */
