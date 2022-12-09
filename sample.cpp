@@ -45,12 +45,8 @@ struct DFA {
 void print_nfa(std::string text, const NFA& a);
 void print_dfa(std::string text, const DFA& a);
 
-typedef std::set<State> Combined_state;
-
-/*
- * This typedefs set of sets of States
- */
-typedef std::set<Combined_state> Partition;
+using Combined_state = std::set<State>;
+using Partition = std::set<Combined_state>;
 
 /**
  * print \a state in form:
@@ -84,12 +80,8 @@ void print_partition(const Partition& part) {
 
 #endif /* not __PROGTEST__ */
 
-typedef std::set<State> Combined_state;
-
-/*
- * This typedefs set of sets of States
- */
-typedef std::set<Combined_state> Partition;
+using Combined_state = std::set<State>;
+using Patyition = std::set<Combined_state>;
 
 /**
  * This is super class for automates whose states are Combined_state-s
@@ -97,8 +89,8 @@ typedef std::set<Combined_state> Partition;
 class FAx {
 protected:
     std::set<Symbol> m_Alphabet;
-    std::set<Combined_state> m_States;
-    std::set<Combined_state> m_FinalStates;
+    Partition m_States;
+    Partition m_FinalStates;
     Combined_state m_InitialState;
 public:
     void set_alphabet(const std::set<Symbol>& alphabet) { m_Alphabet = alphabet; }
@@ -107,7 +99,7 @@ public:
     void add_final_state(const Combined_state& state);
     void set_init_state(const Combined_state& state);
     const std::set<Symbol>& get_alphabet(void);
-    const std::set<Combined_state>& get_states(void);
+    const Partition& get_states(void);
 #ifndef __PROGTEST__
     void print(const std::string& txt);
 #endif
@@ -133,7 +125,7 @@ const std::set<Symbol>& FAx::get_alphabet(void)
     return m_Alphabet;
 }
 
-const std::set<Combined_state>& FAx::get_states(void)
+const Partition& FAx::get_states(void)
 {
     return m_States;
 }
@@ -166,12 +158,12 @@ void FAx::print(const std::string& txt)
  */
 class NFAx: public FAx {
 private:
-    std::map<std::pair<Combined_state, Symbol>, std::set<Combined_state>> m_Transitions;
+    std::map<std::pair<Combined_state, Symbol>, Partition> m_Transitions;
 public:
     NFAx() {};
 
     void add_transition(const std::pair<Combined_state, Symbol>& key,
-                        const std::set<Combined_state>& value);
+                        const Partition& value);
     NFA nfax2nfa();
 #ifndef __PROGTEST__
     void print(const std::string& txt);
@@ -179,39 +171,44 @@ public:
 };
 
 void NFAx::add_transition(const std::pair<Combined_state, Symbol>& key,
-                          const std::set<Combined_state>& value)
+                          const Partition& value)
 {
     m_Transitions.insert({key, value});
 }
 
+/**
+ * Builds NFA from NFAx and return it 
+ * Assigns state for every combined state of NFAx
+ * and uses those states for returned NFA
+ */
 NFA NFAx::nfax2nfa()
 {
     NFA nfa;
-    std::map<Combined_state, State> cs2c;
+    std::map<Combined_state, State> cs2s;
     State s = 1;
     
     nfa.m_Alphabet = get_alphabet();
     for (auto i : m_States) {
-        cs2c.insert({i, s});
+        cs2s.insert({i, s});
         nfa.m_States.insert(s++);
     }
     for (auto i : m_FinalStates) {
-        auto rc = cs2c.find(i);
+        auto rc = cs2s.find(i);
         nfa.m_FinalStates.insert(rc->second);
     }
-    auto rc = cs2c.find(m_InitialState);
+    auto rc = cs2s.find(m_InitialState);
     nfa.m_InitialState = rc->second;
     for (auto i : m_Transitions) {
-        /* i is { (Combined_state, Symbol), set<Combined_state> */
+        /* i is { (Combined_state, Symbol), Partition */
         Combined_state cs = i.first.first;
         Symbol sym = i.first.second;
-        State state = cs2c.find(cs)->second;
+        State state = cs2s.find(cs)->second;
 
         /* set<Combined_state> i.second -> set<States> state */
         Combined_state states;
         for (auto j : i.second) {
             /* j is Combined_state */
-            states.insert(cs2c.find(j)->second);
+            states.insert(cs2s.find(j)->second);
         }
         /* (State, Symbol) -> Combined_state */
         nfa.m_Transitions.insert({{state, sym}, states});
@@ -222,7 +219,7 @@ NFA NFAx::nfax2nfa()
 #ifndef __PROGTEST__
 void NFAx::print(const std::string& txt)
 {
-    std::cout << "NFA: ";
+    std::cout << "NFAx: ";
     FAx::print(txt);
     std::cout << "Transitions:\n";
     int counter = 0;
@@ -260,26 +257,27 @@ void DFAx::add_transition(const std::pair<Combined_state, Symbol>& key,
 DFA DFAx::dfax2dfa()
 {
     DFA dfa;
-    std::map<Combined_state, State> cs2c;
+    std::map<Combined_state, State> cs2s;
     State s = 1;
     
     dfa.m_Alphabet = get_alphabet();
     for (auto i : m_States) {
-        cs2c.insert({i, s});
+        cs2s.insert({i, s});
         dfa.m_States.insert(s++);
     }
     for (auto i : m_FinalStates) {
-        auto rc = cs2c.find(i);
+        auto rc = cs2s.find(i);
         dfa.m_FinalStates.insert(rc->second);
     }
-    auto rc = cs2c.find(m_InitialState);
+    auto rc = cs2s.find(m_InitialState);
     dfa.m_InitialState = rc->second;
     for (auto i : m_Transitions) {
         /* i is { (Combined_state, Symbol), Combined_state */
-        State state = cs2c.find(i.first.first)->second;
+        State state = cs2s.find(i.first.first)->second;
         Symbol sym = i.first.second;
+        State val = cs2s.find(i.second)->second;
 
-        dfa.m_Transitions.insert({{state, sym}, cs2c.find(i.second)->second});
+        dfa.m_Transitions.insert({ {state, sym}, val });
     }
     return dfa;
 }
@@ -301,67 +299,10 @@ void DFAx::print(const std::string& txt)
 }
 #endif
 
-Partition new_partition(const Partition& P, const DFA& dfa) {
-    Partition T;
-
-    for (auto S : P) {
-        std::set<State> S1;
-        std::set<State> S2;
-        for (auto a : dfa.m_Alphabet) {
-            // Partition S by a
-            std::set<State> S1Target;
-            S1 = S1Target;
-            S2 = S1Target;
-            for (auto s : S) {
-                auto m = dfa.m_Transitions.find({ s, a });
-                if (m == dfa.m_Transitions.end()) {
-                    std::cout << "{ " << s << ", " << a << " } -> empty\n";
-                    continue;
-                }
-                // Look for set which contains m->second
-                for (auto tmp : P) {
-                    auto rc = tmp.find(m->second);
-                    if (rc == tmp.end()) {
-                        continue;
-                    }
-                    if (S1.empty()) {
-                        S1Target = tmp;
-                        S1.insert(s);
-                    }
-                    else {
-                        if (tmp == S1Target) {
-                            S1.insert(s);
-                        }
-                        else {
-                            S2.insert(s);
-                        }
-                    }
-                }
-            }
-            if (!S2.empty()) {
-                break;
-            }
-        } // For alphabet
-        T.insert(S1);
-        if (!S2.empty()) {
-            T.insert(S2);
-        }
-    }
-    return T;
-}
-
-Combined_state partition_find(Partition partition, State state) {
-    for (auto i : partition) {
-        auto pos = i.find(state);
-        if (pos != i.end()) {
-            return i;
-        }
-    }
-
-    return Combined_state();
-}
-
-// Find and return the biggest value of NFA states
+/**
+ *  Find and return the biggest value of NFA states.
+ *  Used to gurantee uniqueness of states of automates which are to be intersected or unified
+ */
 State find_delta_state(const NFA& a) {
     State max_state = 0;
     for (auto i : a.m_States) {
@@ -373,11 +314,13 @@ State find_delta_state(const NFA& a) {
     return max_state + 1;
 }
 
-
-// Modify all states of NFA a by adding delta
+/**
+ *  Modify all states of NFA \a a by adding \a delta
+ *  It makes NFA \a a suitable for intersection or unify 
+ */
 void increase_states_by_delta(NFA& a, State delta) {
     // Modify set of states
-    std::set<State> states;
+    Combined_state states;
 
     for (auto i : a.m_States) {
         states.insert(i + delta);
@@ -395,11 +338,11 @@ void increase_states_by_delta(NFA& a, State delta) {
     a.m_InitialState += delta;
 
     // Modify transition function
-    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
+    std::map<std::pair<State, Symbol>, Combined_state> transitions;
     for (auto j : a.m_Transitions) {
         std::pair<State, Symbol> key = j.first;
         key.first += delta;
-        std::set<State> value;
+        Combined_state value;
         for (auto k : j.second) {
             value.insert(k + delta);
         }
@@ -409,14 +352,17 @@ void increase_states_by_delta(NFA& a, State delta) {
     a.m_Transitions = transitions;
 }
 
-// Unify two NFAs with epsilon transition
-// Input:
-//      a, b NFAs to unify
-// Output:
-//      NFA - L(NFA) = L(a) U L(b)
-// Lecture 3, page 12
+/** 
+ * Unify two NFAs with epsilon transition
+ * Input:
+ *      a, b NFAs to unify
+ * Output:
+ *      NFA : L(NFA) = L(a) U L(b)
+ * Algorithm from Lecture 3, page 12.
+ */
 NFA unify_nfa_eps(const NFA& a, const NFA& b) {
     NFA res;
+
     res.m_Alphabet = a.m_Alphabet;
     for (auto i : b.m_Alphabet) {
         res.m_Alphabet.insert(i);
@@ -431,11 +377,13 @@ NFA unify_nfa_eps(const NFA& a, const NFA& b) {
     for (auto i : b1.m_States) {
         res.m_States.insert(i);
     }
+
+    // Add new initial state
     res.m_InitialState = find_delta_state(b1);
     res.m_States.insert(res.m_InitialState);
 
     // Compose transition function of NFA res
-    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
+    std::map<std::pair<State, Symbol>, Combined_state> transitions;
     
     // 3. delta(q, a) <- delta1(q, a)
     transitions = a.m_Transitions;
@@ -447,7 +395,7 @@ NFA unify_nfa_eps(const NFA& a, const NFA& b) {
 
     // 2.   delta(q0, epsilon) <- {q01, q02}
     std::pair<State, Symbol> key = {res.m_InitialState, '\0'};
-    std::set<State> value = { a.m_InitialState, b1.m_InitialState };
+    Combined_state value = { a.m_InitialState, b1.m_InitialState };
     transitions.insert({ key, value });
     res.m_Transitions = transitions;
 
@@ -460,12 +408,19 @@ NFA unify_nfa_eps(const NFA& a, const NFA& b) {
     return res;
 }
 
+/**
+ * Unify two NFAs with parallel run
+ * Input:
+ *      a, b total NFAs to unify
+ * Output:
+ *      NFA : L(NFA) = L(a) U L(b)
+ * Algorithm from Lecture 3, page 14.
+ */
 NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
     NFAx nfax;
 
     // 1. Alphabet
     nfax.set_alphabet(a.m_Alphabet);
-
     for (auto i : b.m_Alphabet) {
         nfax.set_alphabet(i);
     }
@@ -474,12 +429,9 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
     NFA b1 = b;
     increase_states_by_delta(b1, find_delta_state(a));
 
-    // 2. States
-    Combined_state a_states = a.m_States;
-    Combined_state b_states = b1.m_States;
-
-    for (auto a_state : a_states) {
-        for (auto b_state : b_states) {
+    // 2. States: a.m_States x b1.m_States
+    for (auto a_state : a.m_States) {
+        for (auto b_state : b1.m_States) {
             nfax.add_state({ a_state, b_state });
         }
     }
@@ -487,12 +439,13 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
     // 2. Initial state
     nfax.set_init_state({ a.m_InitialState, b1.m_InitialState });
 
-    // 3. Final states
+    // 3. Final states: a.m_FinalStates x b1.m_States
     for (auto a_final_state : a.m_FinalStates) {
         for (auto b_state : b1.m_States) {
             nfax.add_final_state({ a_final_state, b_state });
         }
     }
+    //  Final states: a.m_States x b1.m_FinalStates 
     for (auto a_state : a.m_States) {
         for (auto b_final_state : b1.m_FinalStates) {
             nfax.add_final_state({ a_state, b_final_state });
@@ -502,6 +455,7 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
     // 4. Transition function
     for (auto st : nfax.get_states()) {
         for (auto sym : nfax.get_alphabet()) {
+            // Split st into states of a and b1
             Combined_state::iterator it = st.begin();
             auto a_state = *it;
             advance(it, 1);
@@ -511,8 +465,8 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
             if (a_pos == a.m_Transitions.end() || b_pos == b1.m_Transitions.end()) {
                 continue;
             }
-            // a_pos->second and b_pos->second are std::set<States>
-            std::set<Combined_state> value;
+            // a_pos->second and b_pos->second are of type Combined_state
+            Partition value;
             for (auto i : a_pos->second) {
                 for (auto j : b_pos->second) {
                     value.insert({ i, j });
@@ -739,6 +693,56 @@ DFA nfa2dfa(const NFA& a)
     
     return dfax.dfax2dfa();
 }
+
+Partition new_partition(const Partition& P, const DFA& dfa) {
+    Partition T;
+
+    for (auto S : P) {
+        std::set<State> S1;
+        std::set<State> S2;
+        for (auto a : dfa.m_Alphabet) {
+            // Partition S by a
+            std::set<State> S1Target;
+            S1 = S1Target;
+            S2 = S1Target;
+            for (auto s : S) {
+                auto m = dfa.m_Transitions.find({ s, a });
+                if (m == dfa.m_Transitions.end()) {
+                    std::cout << "{ " << s << ", " << a << " } -> empty\n";
+                    continue;
+                }
+                // Look for set which contains m->second
+                for (auto tmp : P) {
+                    auto rc = tmp.find(m->second);
+                    if (rc == tmp.end()) {
+                        continue;
+                    }
+                    if (S1.empty()) {
+                        S1Target = tmp;
+                        S1.insert(s);
+                    }
+                    else {
+                        if (tmp == S1Target) {
+                            S1.insert(s);
+                        }
+                        else {
+                            S2.insert(s);
+                        }
+                    }
+                }
+            }
+            if (!S2.empty()) {
+                break;
+            }
+        } // For alphabet
+        T.insert(S1);
+        if (!S2.empty()) {
+            T.insert(S2);
+        }
+    }
+    return T;
+}
+
 
 // DFA minimization using partinioning method
 // Lecture 3. p. 31
