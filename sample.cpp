@@ -300,18 +300,12 @@ void DFAx::print(const std::string& txt)
 #endif
 
 /**
- *  Find and return the biggest value of NFA states.
+ *  Return the biggest value of NFA states + 1.
  *  Used to gurantee uniqueness of states of automates which are to be intersected or unified
+ *  and to calculate value for deadstate
  */
 State find_delta_state(const NFA& a) {
-    State max_state = 0;
-    for (auto i : a.m_States) {
-        if (i > max_state) {
-            max_state = i;
-        }
-    }
-
-    return max_state + 1;
+    return *a.m_States.rbegin() + 1;
 }
 
 /**
@@ -409,6 +403,101 @@ NFA unify_nfa_eps(const NFA& a, const NFA& b) {
 }
 
 /**
+ * Calculates epsilon closure for a state \a s of NFA \a a.
+ * Algorithm from lecture 3 p. 25
+ */
+Combined_state e_closure(const NFA& a, State s) {
+    Combined_state res = { s };
+    unsigned long cnt = 1;
+    
+    while (1) {
+        for (auto i : res) {
+            std::pair<State, Symbol> key = { i, '\0' };
+            auto pos = a.m_Transitions.find(key);
+            if (pos == a.m_Transitions.end()) {
+                // Epsilon transition for this state not found
+                continue;
+            }
+            // pos->second is set of states
+            for (auto j : pos->second) {
+                res.insert(j);
+            }
+        }
+        if (res.size() == cnt) {
+            break;
+        }
+
+        cnt = res.size();
+    }
+
+    return res;
+}
+
+/**
+ * Return true if there is no common state in \a a and \a b
+ * Used in function e_transition_removal 
+ */
+bool is_set_intersect_empty(const Combined_state& a, const Combined_state& b) {
+    for (auto i : a) {
+        for (auto j : b) {
+            if (i == j) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/** 
+ *  Conversion of NFA with epsilon transitions into NFA without epsilon transitions
+ *  Algorithm from lecture 2, p. 26
+ */
+NFA e_transition_removal(const NFA& a) {
+    NFA res;
+
+    res.m_States = a.m_States;
+    res.m_Alphabet = a.m_Alphabet;
+    res.m_InitialState = a.m_InitialState;
+
+    // Compose delta'(transition function on NFA res)
+    std::map<std::pair<State, Symbol>, Combined_state> transitions;
+    for (auto state : res.m_States) {
+        Combined_state e_clos = e_closure(a, state);
+        for (auto symbol : res.m_Alphabet) {
+            std::pair<State, Symbol> key = { state, symbol };
+            Combined_state value;
+            for (auto clos_state : e_clos) {
+                std::pair<State, Symbol> clos_key = { clos_state, symbol };
+                auto pos = a.m_Transitions.find(clos_key);
+                if (pos == a.m_Transitions.end()) {
+                    // Not found
+                    continue;
+                }
+                // pos->second is set of states
+                for (auto j : pos->second) {
+                    value.insert(j);
+                }
+            }
+            transitions.insert({ key, value });
+        }
+    }
+    res.m_Transitions = transitions;
+
+    // Compose F'(final states of NFA res)
+    Combined_state fin_states;
+    for (auto q : res.m_States) {
+        Combined_state e_clos = e_closure(a, q);
+        if (!is_set_intersect_empty(e_clos, a.m_FinalStates)) {
+            fin_states.insert(q);
+        }
+    }
+    res.m_FinalStates = fin_states;
+    return res;
+}
+
+
+/**
  * Unify two NFAs with parallel run
  * Input:
  *      a, b total NFAs to unify
@@ -454,12 +543,12 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
     
     // 4. Transition function
     for (auto st : nfax.get_states()) {
+        // Split st into states of a and b1
+        Combined_state::iterator it = st.begin();
+        auto a_state = *it;
+        advance(it, 1);
+        auto b_state = *it;
         for (auto sym : nfax.get_alphabet()) {
-            // Split st into states of a and b1
-            Combined_state::iterator it = st.begin();
-            auto a_state = *it;
-            advance(it, 1);
-            auto b_state = *it;
             auto a_pos = a.m_Transitions.find({ a_state, sym });
             auto b_pos = b1.m_Transitions.find({b_state, sym});
             if (a_pos == a.m_Transitions.end() || b_pos == b1.m_Transitions.end()) {
@@ -480,135 +569,18 @@ NFA unify_nfa_parallel(const NFA &a, const NFA &b) {
 }
 
 
-// Calculates epsilon closure for a state \s of NFA \a by definition lecture 3 p. 25
-std::set<State> e_closure(const NFA& a, State s) {
-    std::set<State> res = { s };
-    unsigned long cnt = 1;
-    while (1) {
-        for (auto i : res) {
-            std::pair<State, Symbol> key = { i, '\0' };
-            auto pos = a.m_Transitions.find(key);
-            if (pos == a.m_Transitions.end()) {
-                // Epsilon transition for this state not found
-                continue;
-            }
-            // pos->second is set of states
-            for (auto j : pos->second) {
-                res.insert(j);
-            }
-        }
-        if (res.size() == cnt) {
-            break;
-        }
-
-        cnt = res.size();
-    }
-
-    return res;
-}
-
-bool is_set_intersect_empty(const std::set<State>& a, const std::set<State>& b) {
-    for (auto i : a) {
-        for (auto j : b) {
-            if (i == j) {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-// Conversion NFA with epsilon transitions into NFA without epsilon transitions
-// Lecture 2, p. 26
-NFA e_transition_removal(const NFA& a) {
-    NFA res;
-    
-    res.m_States = a.m_States;
-    res.m_Alphabet = a.m_Alphabet;
-    res.m_InitialState = a.m_InitialState;
-    
-    // Compose delta'(transition function on NFA res)
-    std::map<std::pair<State, Symbol>, std::set<State>> transitions;
-    for (auto state : res.m_States) {
-        std::set<State> e_clos = e_closure(a, state);
-        for (auto symbol : res.m_Alphabet) {
-            std::pair<State, Symbol> key = { state, symbol };
-            std::set<State> value;
-            for (auto clos_state : e_clos) {
-                std::pair<State, Symbol> clos_key = { clos_state, symbol };
-                auto pos = a.m_Transitions.find(clos_key);
-                if (pos == a.m_Transitions.end()) {
-                    // Not found
-                    continue;
-                }
-                // pos->second is set of states
-                for (auto j : pos->second) {
-                    value.insert(j);
-                }
-            }
-            transitions.insert({ key, value });
-        }
-    }
-    res.m_Transitions = transitions;
-
-    // Compose F'(final states of NFA res)
-    std::set<State> fin_states;
-    for (auto q : res.m_States) {
-        std::set<State> e_clos = e_closure(a, q);
-        if (!is_set_intersect_empty(e_clos, a.m_FinalStates)) {
-            fin_states.insert(q);
-        }
-    }
-
-    res.m_FinalStates = fin_states;
-
-    return res;
-}
-
-#if 0
-// Identification and removal unreachable states (Lecture 2, p. 17)
-// Input: DFA
-// Output: DFA without unreachable states
-DFA unreachable_states_removal(const DFA& a) {
-    Combined_state Q_cur = { a.m_InitialState };
-    Combined_state Q_next = Q_cur;
-    while (1) {
-        for (auto state : Q_cur) {
-            for (auto sym : a.m_Alphabet) {
-                auto pos = a.m_Transitions.find({ state, sym });
-                if (pos == a.m_Transitions.end()) {
-                    continue;
-                }
-                Q_next.insert(pos->second);
-            }
-        }
-        if (Q_cur == Q_next) {
-            break;
-        }
-        Q_cur = Q_next;
-    }
-
-    assert(Q_cur == a.m_States);
-    std::cout << "Reachable states:\n";
-    print_comb_state(Q_cur);
-    std::cout << "\n";
-
-    return DFA();
-}
-#endif
-
 /**
  * identification of useful states and removal of redundant states
- * lecture 2, p. 20
+ * DFA \a dfa has not empty accepted language
+ * Algorithm from lecture 2, p. 20
  */
 DFA remove_redundant_states(const DFA& dfa)
 {
 	DFA res;
 
 	res.m_States = dfa.m_FinalStates;
+	Combined_state Q = res.m_States;
 	while (1) {
-		Combined_state Q = res.m_States;
 		for (auto p : res.m_States) {
 			for (auto t : dfa.m_Transitions) {
 				if (t.second == p)
@@ -619,9 +591,11 @@ DFA remove_redundant_states(const DFA& dfa)
 			break;
 		res.m_States = Q;
 	}
+    // Initial state must be already in res.m_State because L(DFA) is not empty
 	res.m_Alphabet = dfa.m_Alphabet;
 	res.m_InitialState = dfa.m_InitialState;
 	res.m_FinalStates = dfa.m_FinalStates;
+    // Calculating transition function
 	for (auto q: res.m_States) {
 		for (auto sym: res.m_Alphabet) {
 			auto pos = dfa.m_Transitions.find({q, sym});
@@ -631,14 +605,13 @@ DFA remove_redundant_states(const DFA& dfa)
 				res.m_Transitions.insert({{q, sym}, pos->second});
 		}
 	}
-    res.m_States.insert(dfa.m_InitialState);
 
 	return res;
 }
 
 /**
  * Convert NFA \a a to DFA
- * Subset construction algorithm (Lecture 3, p. 3)
+ * Subset construction algorithm from Lecture 3, p. 3
  */
 DFA nfa2dfa(const NFA& a)
 {
@@ -648,9 +621,9 @@ DFA nfa2dfa(const NFA& a)
     dfax.add_state({ a.m_InitialState });
     dfax.set_init_state({a.m_InitialState});
     
-    std::set<Combined_state> states = dfax.get_states();
+    Partition states = dfax.get_states();
     while (!states.empty()) {
-        std::set<Combined_state> added_states;
+        Partition added_states;
         for (auto cs : states) {
             for (auto sym : a.m_Alphabet) {
                 /* compose new (potentially) state */
@@ -694,20 +667,25 @@ DFA nfa2dfa(const NFA& a)
     return dfax.dfax2dfa();
 }
 
+/**
+ * Partition \a P to class of equivalence
+ * Algorithm of minimization from Lecture 3, p. 37 
+ */
 Partition new_partition(const Partition& P, const DFA& dfa) {
     Partition T;
 
     for (auto S : P) {
-        std::set<State> S1;
-        std::set<State> S2;
+        Combined_state S1;
+        Combined_state S2;
         for (auto a : dfa.m_Alphabet) {
             // Partition S by a
-            std::set<State> S1Target;
+            Combined_state S1Target;
             S1 = S1Target;
             S2 = S1Target;
             for (auto s : S) {
                 auto m = dfa.m_Transitions.find({ s, a });
                 if (m == dfa.m_Transitions.end()) {
+                    // Should not happen for DFA
                     std::cout << "{ " << s << ", " << a << " } -> empty\n";
                     continue;
                 }
@@ -715,6 +693,7 @@ Partition new_partition(const Partition& P, const DFA& dfa) {
                 for (auto tmp : P) {
                     auto rc = tmp.find(m->second);
                     if (rc == tmp.end()) {
+                        // Should not happen
                         continue;
                     }
                     if (S1.empty()) {
@@ -735,6 +714,7 @@ Partition new_partition(const Partition& P, const DFA& dfa) {
                 break;
             }
         } // For alphabet
+        // S1 U S2 = S
         T.insert(S1);
         if (!S2.empty()) {
             T.insert(S2);
@@ -744,9 +724,11 @@ Partition new_partition(const Partition& P, const DFA& dfa) {
 }
 
 
-// DFA minimization using partinioning method
-// Lecture 3. p. 31
-DFA dfa_minimization(const DFA& a) {
+/**
+ * DFA minimization using partinioning method
+ * Algorithm from lecture 3. p. 31
+ */
+ DFA dfa_minimization(const DFA& a) {
     DFA res;
     Partition partition;
     Partition partition2;
@@ -760,6 +742,7 @@ DFA dfa_minimization(const DFA& a) {
         std::inserter(nonfinal_states, nonfinal_states.end()));
     partition.insert(nonfinal_states);
 
+    // Repeat partitioning until no new set of states gets created 
     while (1) {
         partition2 = new_partition(partition, a);
         if (partition == partition2) {
@@ -770,8 +753,8 @@ DFA dfa_minimization(const DFA& a) {
 
     // Build minimized DFA
     DFAx dfax;
+
     dfax.set_alphabet(a.m_Alphabet);
-    std::map<Combined_state, State> class2state;
     for (auto i : partition) {
         dfax.add_state(i);
         // Determine initial state
@@ -817,6 +800,10 @@ DFA dfa_minimization(const DFA& a) {
     return dfax.dfax2dfa();
 }
 
+ /**
+  * Creating total NFA
+  * Algorithm for total DFA is used from Lecture 2 p.9 
+ */
 NFA total_nfa(const NFA& nfa)
 {
     NFA tnfa;
@@ -826,7 +813,7 @@ NFA total_nfa(const NFA& nfa)
     tnfa.m_FinalStates = nfa.m_FinalStates;
     tnfa.m_States = nfa.m_States;
    
-    State dead_state = *tnfa.m_States.rbegin() + 1;
+    State dead_state = find_delta_state(tnfa);
     tnfa.m_States.insert(dead_state);
 
     for (auto s : tnfa.m_States) {
@@ -844,8 +831,21 @@ NFA total_nfa(const NFA& nfa)
     return tnfa;
 }
 
-std::set<std::string> accepted_strings(const DFA& a);
+/**
+ * Convert NFA \a a to optimal DFA
+ * Determinization, minimization, redundant states removal
+ */
+DFA nfa_2min_dfa(const NFA& a) {
+    DFA dfa = nfa2dfa(a);
 
+    dfa = dfa_minimization(dfa);
+
+    return remove_redundant_states(dfa);
+}
+
+/**
+ * Unify implementation using parallel run algorithm 
+ */
 DFA unify_parallel(const NFA& a, const NFA& b) {
     // 0. Convert a and b to total NFAs
     NFA total_a = total_nfa(a);
@@ -854,18 +854,12 @@ DFA unify_parallel(const NFA& a, const NFA& b) {
     // 1. Calculate union NFA with parallel run(Lecture 3, p. 14)
     NFA nfa = unify_nfa_parallel(total_a, total_b);
     
-    // 2. NFA determinization (subset construction) (Lecture 3, p.3)
-    DFA dfa = nfa2dfa(nfa);
-
-    // 4. Remove unreachable states
-//    unreachable_states_removal(dfa);
-
-    // 5. DFA minimization (Algorithm Moore) (Lecture 3, p. 31)
-    dfa = dfa_minimization(dfa);
-
-    return remove_redundant_states(dfa);
+    return nfa_2min_dfa(nfa);
 }
 
+/**
+ * Unify implementation using union with epsilon transition algorithm from Lecture 3, p. 12
+*/
 DFA unify_eps(const NFA& a, const NFA& b) {    
     // 1. Calculate union NFA with epsilon transition (Lecture 3, p. 12)
     NFA nfa = unify_nfa_eps(a, b);
@@ -873,16 +867,7 @@ DFA unify_eps(const NFA& a, const NFA& b) {
     // 2. Convert res into NFA without epsilon transition (Lecture 2, p. 26)
     nfa = e_transition_removal(nfa);
     
-    // 3. NFA determinization (subset construction) (Lecture 3, p.3)
-    DFA dfa = nfa2dfa(nfa);
-
-    // 4. Remove unreachable states
-//    unreachable_states_removal(dfa);
-    
-    // 5. DFA minimization (Algorithm Moore) (Lecture 3, p. 31)
-    dfa = dfa_minimization(dfa);
-
-    return remove_redundant_states(dfa);
+    return nfa_2min_dfa(nfa);
 }
 
 DFA unify(const NFA& a, const NFA& b) {
@@ -907,7 +892,6 @@ NFA intersect_nfa(const NFA& a, const NFA& b)
     increase_states_by_delta(b1, find_delta_state(a));
 
     // Determine states of NFA
-    std::set<Combined_state> comb_states;
     for (auto a_state : a.m_States) {
         for (auto b_state : b1.m_States) {
             nfax.add_state({a_state, b_state});
@@ -943,31 +927,32 @@ NFA intersect_nfa(const NFA& a, const NFA& b)
                     part.insert({ a, b });
                 }
             }
-            nfax.add_transition({{ a_state, b_state }, sym}, part);
+            nfax.add_transition({ state, sym }, part);
         }
     }
 
     return nfax.nfax2nfa();
 }
 
-// Intersection algorithm (Lecture 3, p. 17)
-DFA intersect(const NFA& a, const NFA& b) {    
+/**
+ * Intersection implementation of two NFAs
+ */
+ DFA intersect(const NFA& a, const NFA& b) {    
     NFA nfa = intersect_nfa(a, b);
     
-    DFA dfa = nfa2dfa(nfa);
-    
-//    dfa = unreachable_states_removal(dfa);
-    
-    dfa = dfa_minimization(dfa);
-    
-    return remove_redundant_states(dfa);
-}
+    return nfa_2min_dfa(nfa);
+ }
 
 #ifndef __PROGTEST__
 
+// Set of strings to test
 std::set<std::string> data;
 
 #define MAXLEN 8
+/*
+ * Generate all possible strings of length from 1 to \a maxlen of alphabet {'a', 'b'}.
+ * For instance: if \a maxlen = 3 generated strings are: a, b, aa, bb, ab, ba, aaa, bbb ... 
+ */
 std::set<std::string> test_strings(int maxlen)
 {
     std::set<std::string> strings;
@@ -991,13 +976,15 @@ std::set<std::string> test_strings(int maxlen)
 
             std::replace(str.begin(), str.end(), '0', 'a');
             std::replace(str.begin(), str.end(), '1', 'b');
-            //                      std::cout << str << std::endl;
             strings.insert(str);
         }
     }
     return strings;
 }
 
+/**
+ * Return true if \a dfa accepts string \a str, false otherwise 
+ */
 bool accept(const DFA& dfa, const std::string str)
 {
     State s = dfa.m_InitialState;
@@ -1013,25 +1000,9 @@ bool accept(const DFA& dfa, const std::string str)
     return true;
 }
 
-void test_dfa(const std::string& text, const DFA& dfa, const std::set<std::string>& strings)
-{
-    int accepted = 0;
-    int rejected = 0;
-
-    std::cout << "====" << text << "=====\n";
-    for (auto i : strings) {
-        if (accept(dfa, i)) {
-            accepted++;
-            std::cout << i << std::endl;
-        }
-        else {
-            rejected++;
-            //                      std::cout << "****** " << i << std::endl;
-        }
-    }
-    std::cout << "==== accepted " << accepted << ", rejected " << rejected << std::endl;
-}
-
+/**
+ * Return subset of string set data accepted by DFA \a a
+ */
 std::set<std::string> accepted_strings(const DFA& a) {
     std::set<std::string> res;
 
@@ -1050,19 +1021,37 @@ bool operator==(const DFA& a, const DFA& b)
     return std::tie(accepted_strings(a)) == std::tie(accepted_strings(b));
 }
 
-void print_nfa(std::string text, const NFA& a) {
-    std::cout << "NFA: " << text << "\n";
+void print_fa(const std::set<Symbol>& alphabet, const Combined_state& states,
+              State init_state, const Combined_state& fin_states) {
     std::cout << "\tAlphabet [";
-    for (auto i : a.m_Alphabet) {
+    for (auto i : alphabet) {
         std::cout << " '" << i << "'";
     }
     std::cout << " ]\n";
 
     std::cout << "\tStates [";
-    for (auto i : a.m_States) {
+    for (auto i : states) {
         std::cout << " " << i;
     }
     std::cout << " ]\n";
+
+    std::cout << "\tFinal States [";
+    for (auto i : fin_states) {
+        std::cout << " " << i;
+    }
+    std::cout << " ]\n";
+
+    std::cout << "\tInitial State [ " << init_state << " ]\n";
+
+}
+
+/**
+ * Debug function to print NFA
+ */
+void print_nfa(std::string text, const NFA& a) {
+    std::cout << "NFA: " << text << "\n";
+    
+    print_fa(a.m_Alphabet, a.m_States, a.m_InitialState, a.m_FinalStates);
 
     std::cout << "\tTransitions : \n";
     int counter = 0;
@@ -1073,44 +1062,22 @@ void print_nfa(std::string text, const NFA& a) {
         }
         std::cout << " ]\n";
     }
-
-    std::cout << "\tFinal States [";
-    for (auto i : a.m_FinalStates) {
-        std::cout << " " << i;
-    }
-    std::cout << " ]\n";
-
-    std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
 }
 
+/**
+ * Debug function to print DFA
+ */
 void print_dfa(std::string text, const DFA& a) {
     std::cout << "DFA: " << text << "\n";
-    std::cout << "\tAlphabet [";
-    for (auto i : a.m_Alphabet) {
-        std::cout << " '" << i << "'";
-    }
-    std::cout << " ]\n";
 
-    std::cout << "\tStates [";
-    for (auto i : a.m_States) {
-        std::cout << " " << i;
-    }
-    std::cout << " ]\n";
-
+    print_fa(a.m_Alphabet, a.m_States, a.m_InitialState, a.m_FinalStates);
+    
     int counter = 0;
     std::cout << "\tTransitions : \n";
     for (auto j : a.m_Transitions) {
         std::cout << "\t" << counter++ << ":\tkey [ " << j.first.first << ", '" << j.first.second <<
             "' ], value [ " << j.second << " ]\n";
     }
-
-    std::cout << "\tFinal States [";
-    for (auto i : a.m_FinalStates) {
-        std::cout << " " << i;
-    }
-    std::cout << " ]\n";
-
-    std::cout << "\tInitial State [ " << a.m_InitialState << " ]\n";
 }
 
 int main()
